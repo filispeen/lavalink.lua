@@ -1,7 +1,7 @@
 return {
   name = "filispeen/lavalink.lua",
   version = "0.1.0",
-  description = "Feature-rich Lavalink v4 client for Luvit (Lua) Discord bots — multi-node support, queue management, audio filters, session resuming and Discordia integration.",
+  description = "Feature-rich Lavalink v4 client for Luvit (Lua)",
   tags = { "lavalink", "discord", "music", "audio", "luvit" },
   license = "MIT",
   author = { name = "filispeen" },
