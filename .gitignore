@@ -1,0 +1,44 @@
+# ======================
+# Luvit / Lua
+# ======================
+
+# Luvit installed dependencies — install via: lit install
+deps/
+# Але НЕ ігноруємо deps/ у example/ — там лежить discordia
+# (discordia не публікується на lit реєстрі без git URL)
+
+# Luvit compiled bundles
+*.bundle
+
+# ======================
+# Secrets / Env
+# ======================
+.env
+*.env
+*.env.local
+
+# Lavalink / bot runtime artifacts
+example/gateway.json
+example/discordia.log
+*.log
+
+# ======================
+# OS artifacts
+# ======================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ======================
+# Editor / IDE
+# ======================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ======================
+# Misc
+# ======================
+.continue/
