@@ -1,7 +1,7 @@
-local discordia           = require("discordia")
-local discordiaIntegration = require("../integrations/discordia")
-local commands             = require("./commands")
-local env                  = require("./env")
+local discordia   = require("discordia")
+local lavalinklua = require("lavalink.lua")
+local commands    = require("./commands")
+local env         = require("./env")
 env.load()
 
 local DEBUG = process.env.DEBUG == "true" or process.env.DEBUG == "1"
@@ -42,7 +42,7 @@ client:on("ready", function()
   dbg("DEBUG mode is ON")
   dbg("Lavalink target: %s:%d", LAVALINK_HOST, LAVALINK_PORT)
 
-  local lavalink = discordiaIntegration(client, {
+  local lavalink = lavalinklua.discordia(client, {
     clientId      = client.user.id,
     clientName    = "lavalink-lua/1.0",
     shards        = 1,
@@ -201,9 +201,6 @@ client:on("ready", function()
   client:on("messageCreate", function(message)
     if message.author.bot then return end
     if not message.guild   then return end
-    
-    log("CMD", "Received command: %s from guild: %s", message.content, message.guild.name)
-
     commands.handle(message, lavalink)
   end)
 end)
