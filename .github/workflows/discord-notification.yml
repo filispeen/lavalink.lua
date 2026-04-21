@@ -3,8 +3,7 @@ name: Discord Commit Notification
 on:
   push:
     branches:
-      - main
-      - develop
+      - master
 
 jobs:
   notify-discord:
