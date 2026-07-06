@@ -48,13 +48,13 @@ client:on("ready", function()
     shards        = 1,
     nodes = {
       {
-        id             = "main",
-        host           = LAVALINK_HOST,
-        port           = LAVALINK_PORT,
-        authorization  = LAVALINK_PASS,
-        secure         = false,
-        resuming       = true,
-        resumeTimeout  = 60,
+        id = "main",
+        host = LAVALINK_HOST,
+        port = LAVALINK_PORT,
+        authorization = LAVALINK_PASS,
+        secure = false,
+        resuming = true,
+        resumeTimeout = 60,
         reconnectTries = 5,
         reconnectDelay = 5000,
       },
@@ -185,8 +185,12 @@ client:on("ready", function()
       player.guildId, code, tostring(reason), tostring(byRemote))
     if code == 4006 or code == 4014 then
       dbg("Reconnecting voice for guild=%s (code %d)", player.guildId, code)
+      local voiceChannelId = player.voiceChannelId
       player:disconnect(false)
-      player:connect()
+      if voiceChannelId then
+        player.voiceChannelId = voiceChannelId
+        player:connect()
+      end
     end
   end)
 

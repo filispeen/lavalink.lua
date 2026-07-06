@@ -1,4 +1,5 @@
 local json          = require("json")
+local uv            = require("uv")
 local Queue         = require("./Queue")
 local FilterManager = require("./FilterManager")
 
@@ -225,7 +226,7 @@ end
 
 function Player:getPosition()
   if not self.playing then return self.position end
-  local elapsed = os.clock() * 1000 - self.lastPositionChange
+  local elapsed = uv.now() - self.lastPositionChange
   return math.floor(self.position + elapsed)
 end
 
@@ -294,7 +295,7 @@ end
 function Player:_handlePlayerUpdate(state)
   if state.position then
     self.position           = state.position
-    self.lastPositionChange = os.clock() * 1000
+    self.lastPositionChange = uv.now()
   end
   self.ping.lavalink = state.ping or self.ping.lavalink
   self.state         = state.connected and "CONNECTED" or "DISCONNECTED"

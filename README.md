@@ -173,7 +173,67 @@ player.filters:setLowPass(options)
 player.filters:setPluginFilters(table)
 player.filters:resetFilters()
 player.filters:resetFilter(filterName)
+player.filters:apply()                     -- Re-send current filter state to Lavalink
 ```
+
+---
+
+## LavalinkManager API
+
+```lua
+lavalink:addNode(options)                  -- Add a node at runtime
+lavalink:removeNode(id)                    -- Disconnect and remove a node
+lavalink:init()                            -- Connect all configured nodes
+lavalink:getNode(id?)                      -- Get node by id, or least-loaded usable node
+lavalink:getUsableNodes()                  -- List of connected + ready nodes
+lavalink:getAllNodes()                     -- List of all nodes regardless of state
+
+lavalink:createPlayer(options)             -- Create (or get existing) player for a guild
+lavalink:getPlayer(guildId)                -- Get existing player, or nil
+lavalink:destroyPlayer(guildId, reason?)   -- Destroy player for a guild
+
+lavalink:search(query, options?)           -- REST loadTracks, options = { source?, node? }
+lavalink:decodeTrack(encoded, nodeId?)
+lavalink:decodeTracks(encodedList, nodeId?)
+
+lavalink:handleVoiceUpdate(packet)         -- Feed raw VOICE_STATE_UPDATE / VOICE_SERVER_UPDATE
+```
+
+`createPlayer` options:
+
+```lua
+{
+  guildId        = "...",   -- required
+  voiceChannelId = "...",
+  textChannelId  = "...",
+  selfDeaf       = true,    -- default true
+  selfMute       = false,
+  node           = "main",  -- optional node id, defaults to least-loaded
+  region         = "europe",
+  volume         = 100,
+}
+```
+
+---
+
+## Node Options
+
+```lua
+{
+  id             = "main",              -- defaults to "host:port"
+  host           = "localhost",
+  port           = 2333,
+  authorization  = "youshallnotpass",
+  secure         = false,               -- use wss/https
+  resuming       = true,                -- enable session resuming
+  resumeTimeout  = 60,                  -- seconds
+  reconnectTries = 5,
+  reconnectDelay = 5000,                -- ms, doubles on each attempt up to 60s
+  regions        = { "eu-west" },       -- used by region-aware node selection
+}
+```
+
+If you're not using the Discordia integration, call `lavalink:handleVoiceUpdate(packet)` yourself for every `VOICE_STATE_UPDATE` and `VOICE_SERVER_UPDATE` gateway event, and provide `sendPayload = function(guildId, payload) ... end` in the manager options to forward voice payloads (OP4) to your gateway.
 
 ---
 

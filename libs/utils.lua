@@ -24,16 +24,6 @@ local function merge(target, source)
   return target
 end
 
-local function buildQuery(params)
-  if not params then return "" end
-  local parts = {}
-  for k, v in pairs(params) do
-    table.insert(parts, tostring(k) .. "=" .. tostring(v))
-  end
-  if #parts == 0 then return "" end
-  return "?" .. table.concat(parts, "&")
-end
-
 local function encodeURI(str)
   return str:gsub("[^%w%-%.%_%~%:%/%?%#%[%]%@%!%$%&%'%(%)%*%+%,%;%=]", function(c)
     return string.format("%%%02X", string.byte(c))
@@ -44,6 +34,16 @@ local function encodeURIComponent(str)
   return str:gsub("[^%w%-%.%_%~]", function(c)
     return string.format("%%%02X", string.byte(c))
   end)
+end
+
+local function buildQuery(params)
+  if not params then return "" end
+  local parts = {}
+  for k, v in pairs(params) do
+    table.insert(parts, encodeURIComponent(tostring(k)) .. "=" .. encodeURIComponent(tostring(v)))
+  end
+  if #parts == 0 then return "" end
+  return "?" .. table.concat(parts, "&")
 end
 
 local function splitSearchResult(loadType, data)

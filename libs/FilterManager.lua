@@ -112,6 +112,16 @@ function FilterManager:resetFilter(filterName)
   return self
 end
 
+function FilterManager:apply()
+  self:_apply()
+  return self
+end
+
+function FilterManager:apply()
+  self:_apply()
+  return self
+end
+
 function FilterManager:getCurrentData()
   local copy = {}
   for k, v in pairs(self.data) do

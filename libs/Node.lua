@@ -197,7 +197,10 @@ function Node:_scheduleReconnect()
     return
   end
   self._reconnectAttempts = self._reconnectAttempts + 1
-  local delay = self.options.reconnectDelay
+  local delay = math.min(
+    self.options.reconnectDelay * (2 ^ (self._reconnectAttempts - 1)),
+    60000
+  )
   self.manager:emit("nodeReconnecting", self, self._reconnectAttempts, delay)
 
   local timer = uv.new_timer()

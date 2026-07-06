@@ -35,6 +35,13 @@ function RestHandler:request(method, path, body, query)
     error("[RestHandler] HTTP request failed for " .. url .. ": " .. tostring(res))
   end
 
+  if res.code >= 400 then
+    local decoded = data and data ~= "" and json.decode(data)
+    error(string.format("[RestHandler] HTTP %d on %s %s: %s",
+      res.code, method, url,
+      (decoded and decoded.message) or data or "no response body"))
+  end
+
   if res.code == 204 or not data or data == "" then
     return nil
   end
@@ -42,12 +49,6 @@ function RestHandler:request(method, path, body, query)
   local decoded, err = json.decode(data)
   if not decoded then
     error("[RestHandler] JSON decode error for " .. url .. ": " .. tostring(err))
-  end
-
-  if res.code >= 400 then
-    error(string.format("[RestHandler] HTTP %d on %s %s: %s",
-      res.code, method, url,
-      decoded.message or data))
   end
 
   return decoded

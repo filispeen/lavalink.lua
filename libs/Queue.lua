@@ -46,6 +46,9 @@ function Queue:shuffle()
 end
 
 function Queue:splice(startIndex, deleteCount, ...)
+  assert(startIndex >= 1 and startIndex <= #self.tracks + 1,
+    "[Queue] splice startIndex out of bounds")
+  deleteCount = math.min(deleteCount, #self.tracks - startIndex + 1)
   local inserted = { ... }
   local removed = {}
   for i = 1, deleteCount do

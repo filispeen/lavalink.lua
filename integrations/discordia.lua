@@ -1,6 +1,27 @@
 local json          = require("json")
 local LavalinkManager = require("../libs/LavalinkManager")
 
+local function snowflakeShift22(id)
+  local digits = { 0 }
+  for i = 1, #id do
+    local carry = tonumber(id:sub(i, i))
+    for j = 1, #digits do
+      local val = digits[j] * 10 + carry
+      digits[j] = val % (2^22)
+      carry = math.floor(val / (2^22))
+    end
+    while carry > 0 do
+      digits[#digits + 1] = carry % (2^22)
+      carry = math.floor(carry / (2^22))
+    end
+  end
+  local result = 0
+  for j = #digits, 1, -1 do
+    result = result * (2^22) + digits[j]
+  end
+  return math.floor(result / (2^22))
+end
+
 local function createDiscordiaIntegration(client, lavalinkOptions)
   assert(client,         "[discordia] client required")
   assert(lavalinkOptions,"[discordia] lavalinkOptions required")
@@ -19,7 +40,7 @@ local function createDiscordiaIntegration(client, lavalinkOptions)
     for _ in pairs(shards) do numShards = numShards + 1 end
 
     local shardId = numShards > 1
-      and (math.floor(tonumber(guildId) / 2^22) % numShards)
+      and (snowflakeShift22(tostring(guildId)) % numShards)
       or  0
 
     local shard = shards[shardId]

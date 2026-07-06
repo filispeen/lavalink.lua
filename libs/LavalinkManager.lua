@@ -2,6 +2,7 @@ local json    = require("json")
 local Emitter = require("./Emitter")
 local Node    = require("./Node")
 local Player  = require("./Player")
+local utils   = require("./utils")
 
 local NULL = json.null
 
@@ -11,22 +12,6 @@ end
 
 local LavalinkManager = setmetatable({}, { __index = Emitter })
 LavalinkManager.__index = LavalinkManager
-
-local REGION_MAP = {
-  us_central  = { "us-central", "us", "us-central1" },
-  us_east     = { "us-east", "us-east1" },
-  us_west     = { "us-west", "us-west1" },
-  us_south    = { "us-south" },
-  europe      = { "eu-west", "eu-central", "europe" },
-  singapore   = { "singapore", "asia" },
-  japan       = { "japan", "tokyo" },
-  brazil      = { "brazil" },
-  sydney      = { "sydney", "oceania" },
-  hongkong    = { "hongkong", "asia" },
-  russia      = { "russia" },
-  southafrica = { "southafrica" },
-  india       = { "india" },
-}
 
 function LavalinkManager.new(options)
   assert(options,                              "[LavalinkManager] options required")
@@ -197,7 +182,8 @@ function LavalinkManager:search(query, options)
     or  self:_leastLoadedNode()
 
   local source     = options.source or "ytsearch"
-  local identifier = query:match("^https?://") and query or (source .. ":" .. query)
+  local identifier = query:match("^https?://") and query
+    or (source .. ":" .. utils.encodeURIComponent(query))
 
   local ok, result = pcall(node.rest.loadTracks, node.rest, identifier)
   if not ok then
