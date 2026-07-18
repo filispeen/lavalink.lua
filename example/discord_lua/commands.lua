@@ -29,18 +29,6 @@ local function register(name, fn)
   commands[name] = fn
 end
 
--- discord.lua does not track voice state (no VOICE_STATE_UPDATE cache),
--- so there is no way to look up "the channel this user is currently in"
--- the way Discordia's message.member.voiceChannel does. Callers must
--- pass a voice channel id explicitly: !play <channelId> <query>
-local function parseVoiceChannelArg(args)
-  local first = args[1]
-  if first and first:match("^%d+$") then
-    return table.remove(args, 1)
-  end
-  return nil
-end
-
 local function handle(bot, message, lavalink)
   local prefix  = "!"
   local content = message.content
@@ -65,7 +53,7 @@ local function handle(bot, message, lavalink)
   dbg("'%s' invoked | guild=%s | args=[%s]",
     cmdName, message.guild_id, table.concat(args, ", "))
 
-  local ok, err = pcall(cmd, message, args, lavalink)
+  local ok, err = pcall(cmd, bot, message, args, lavalink)
   if not ok then
     log("ERROR", "Command '%s' failed: %s", cmdName, tostring(err))
     message:reply("Error: " .. tostring(err))
@@ -89,12 +77,15 @@ local function formatDuration(ms)
   return string.format("%d:%02d", mins, secs)
 end
 
-register("play", function(message, args, lavalink)
-  local voiceChannelId = parseVoiceChannelArg(args)
+register("play", function(bot, message, args, lavalink)
+  if #args == 0 then
+    reply(message, "Usage: `!play <url or search query>`")
+    return
+  end
 
-  if #args == 0 or not voiceChannelId then
-    reply(message, "Usage: `!play <voiceChannelId> <url or search query>`\n"
-      .. "(discord.lua does not track voice state yet, so the channel id must be given explicitly)")
+  local voiceChannelId = bot:get_author_voice_channel_id(message)
+  if not voiceChannelId then
+    reply(message, "You need to be in a voice channel first.")
     return
   end
 
@@ -178,7 +169,7 @@ register("play", function(message, args, lavalink)
   end
 end)
 
-register("skip", function(message, args, lavalink)
+register("skip", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player or not player.playing then
     reply(message, "Nothing is playing.")
@@ -196,7 +187,7 @@ register("skip", function(message, args, lavalink)
   end
 end)
 
-register("stop", function(message, args, lavalink)
+register("stop", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player then
     reply(message, "No player found.")
@@ -207,7 +198,7 @@ register("stop", function(message, args, lavalink)
   reply(message, "Stopped and cleared the queue.")
 end)
 
-register("pause", function(message, args, lavalink)
+register("pause", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player or not player.playing then
     reply(message, "Nothing is playing.")
@@ -218,7 +209,7 @@ register("pause", function(message, args, lavalink)
   reply(message, player.paused and "Paused." or "Resumed.")
 end)
 
-register("resume", function(message, args, lavalink)
+register("resume", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player then reply(message, "No player.") return end
   dbg("resume: guild=%s", message.guild_id)
@@ -226,7 +217,7 @@ register("resume", function(message, args, lavalink)
   reply(message, "Resumed.")
 end)
 
-register("queue", function(message, args, lavalink)
+register("queue", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player then reply(message, "No player.") return end
 
@@ -262,7 +253,7 @@ register("queue", function(message, args, lavalink)
   reply(message, table.concat(lines, "\n"))
 end)
 
-register("nowplaying", function(message, args, lavalink)
+register("nowplaying", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player or not player.queue.current then
     reply(message, "Nothing is playing.")
@@ -277,7 +268,7 @@ register("nowplaying", function(message, args, lavalink)
     info.title, info.author, pos, dur, info.uri or ""))
 end)
 
-register("volume", function(message, args, lavalink)
+register("volume", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player then reply(message, "No player.") return end
 
@@ -292,7 +283,7 @@ register("volume", function(message, args, lavalink)
   reply(message, "Volume set to **" .. player.volume .. "**")
 end)
 
-register("repeat", function(message, args, lavalink)
+register("repeat", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player then reply(message, "No player.") return end
 
@@ -306,7 +297,7 @@ register("repeat", function(message, args, lavalink)
   reply(message, "Repeat mode set to **" .. mode .. "**")
 end)
 
-register("shuffle", function(message, args, lavalink)
+register("shuffle", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player or player.queue:isEmpty() then
     reply(message, "The queue is empty.")
@@ -317,7 +308,7 @@ register("shuffle", function(message, args, lavalink)
   reply(message, "Queue shuffled!")
 end)
 
-register("seek", function(message, args, lavalink)
+register("seek", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player or not player.playing then
     reply(message, "Nothing is playing.")
@@ -330,7 +321,7 @@ register("seek", function(message, args, lavalink)
   reply(message, "Seeked to " .. formatDuration(secs * 1000))
 end)
 
-register("dc", function(message, args, lavalink)
+register("dc", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player then reply(message, "No player.") return end
   dbg("dc: destroying player for guild=%s", message.guild_id)
@@ -338,7 +329,7 @@ register("dc", function(message, args, lavalink)
   reply(message, "Disconnected and destroyed player.")
 end)
 
-register("nodes", function(message, args, lavalink)
+register("nodes", function(bot, message, args, lavalink)
   local nodes = lavalink:getAllNodes()
   dbg("nodes: listing %d node(s)", #nodes)
   local lines = { "**Lavalink Nodes:**" }
@@ -353,7 +344,7 @@ register("nodes", function(message, args, lavalink)
   reply(message, table.concat(lines, "\n"))
 end)
 
-register("filter", function(message, args, lavalink)
+register("filter", function(bot, message, args, lavalink)
   local player = lavalink:getPlayer(message.guild_id)
   if not player then reply(message, "No player.") return end
 

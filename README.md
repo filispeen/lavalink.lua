@@ -302,7 +302,7 @@ cp .env.example .env
 luvit bot.lua
 ```
 
-The discord.lua bot does not track voice state yet, so `!play` takes the voice channel id explicitly as its first argument: `!play <channelId> <query>`.
+The discord.lua bot tracks voice state via VOICE_STATE_UPDATE, so `!play <query>` works the same way as the Discordia bot: join a voice channel first, then run the command.
 
 **Commands:**
 
