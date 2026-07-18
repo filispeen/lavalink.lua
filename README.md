@@ -46,10 +46,16 @@ lavalink.lua/
 │   ├── discordia.lua           -- Discordia integration shim
 │   └── discord_lua.lua         -- discord.lua integration shim
 └── example/
-    ├── bot.lua                 -- Full example bot (Discordia)
-    ├── commands.lua            -- All music commands
-    ├── env.lua                 -- .env file loader
-    └── .env.example            -- Environment variable template
+    ├── discordia/
+    │   ├── bot.lua              -- Full example bot (Discordia)
+    │   ├── commands.lua         -- All music commands
+    │   ├── env.lua              -- .env file loader
+    │   └── .env.example         -- Environment variable template
+    └── discord_lua/
+        ├── bot.lua              -- Full example bot (discord.lua)
+        ├── commands.lua         -- All music commands
+        ├── env.lua              -- .env file loader
+        └── .env.example         -- Environment variable template
 ```
 
 ---
@@ -276,16 +282,27 @@ If you're not using the Discordia or discord.lua integration, call `lavalink:han
 
 ## Example Bot
 
-The `example/` folder contains a fully working Discordia bot.
+The `example/` folder contains two fully working bots with the same music commands, one per integration.
 
-**Setup:**
+**Discordia:**
 
 ```bash
-cd example
+cd example/discordia
 cp .env.example .env
 # fill in .env with your values
 luvit bot.lua
 ```
+
+**discord.lua:**
+
+```bash
+cd example/discord_lua
+cp .env.example .env
+# fill in .env with your values
+luvit bot.lua
+```
+
+The discord.lua bot does not track voice state yet, so `!play` takes the voice channel id explicitly as its first argument: `!play <channelId> <query>`.
 
 **Commands:**
 
