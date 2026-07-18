@@ -7,9 +7,11 @@ local RestHandler          = require("./libs/RestHandler")
 local Emitter              = require("./libs/Emitter")
 local utils                = require("./libs/utils")
 local discordiaIntegration = require("./integrations/discordia")
+local discordLuaIntegration = require("./integrations/discord_lua")
 
 return {
   discordia          = discordiaIntegration,
+  discord_lua        = discordLuaIntegration,
 
   LavalinkManager    = LavalinkManager,
   Node               = Node,
