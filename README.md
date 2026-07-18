@@ -1,6 +1,6 @@
 # lavalink.lua
 
-Feature-rich Lavalink v4 client for [Luvit](https://luvit.io/) (Lua) Discord bots - multi-node support, queue management, audio filters, session resuming and Discordia integration.
+Feature-rich Lavalink v4 client for [Luvit](https://luvit.io/) (Lua) Discord bots - multi-node support, queue management, audio filters, session resuming and Discordia / discord.lua integrations.
 
 ---
 
@@ -15,6 +15,8 @@ For the example bot, also install Discordia:
 ```bash
 lit install SinisterRectus/discordia
 ```
+
+Using the discord.lua integration instead does not require Discordia; install discord.lua per its own README.
 
 ---
 
@@ -41,7 +43,8 @@ lavalink.lua/
 │   ├── Emitter.lua             -- Event emitter (on/once/off/emit)
 │   └── utils.lua               -- Utilities (buildQuery, deepCopy, etc.)
 ├── integrations/
-│   └── discordia.lua           -- Discordia integration shim
+│   ├── discordia.lua           -- Discordia integration shim
+│   └── discord_lua.lua         -- discord.lua integration shim
 └── example/
     ├── bot.lua                 -- Full example bot (Discordia)
     ├── commands.lua            -- All music commands
@@ -84,6 +87,40 @@ client:on("ready", function()
 end)
 
 client:run("Bot TOKEN")
+```
+
+Or with discord.lua instead of Discordia:
+
+```lua
+local Bot         = require("discord.lua")
+local lavalinklua = require("lavalink.lua")
+
+local bot = Bot("Bot TOKEN")
+
+bot:on("ready", function()
+  local lavalink = lavalinklua.discord_lua(bot, {
+    nodes = {
+      {
+        id            = "main",
+        host          = "localhost",
+        port          = 2333,
+        authorization = "youshallnotpass",
+      },
+    },
+  })
+
+  lavalink:on("trackStart", function(player, track)
+    print("Now playing: " .. track.info.title)
+  end)
+
+  lavalink:on("queueEnd", function(player)
+    player:destroy("queue finished")
+  end)
+
+  lavalink:init()
+end)
+
+bot:run()
 ```
 
 Playing a track:
@@ -233,7 +270,7 @@ lavalink:handleVoiceUpdate(packet)         -- Feed raw VOICE_STATE_UPDATE / VOIC
 }
 ```
 
-If you're not using the Discordia integration, call `lavalink:handleVoiceUpdate(packet)` yourself for every `VOICE_STATE_UPDATE` and `VOICE_SERVER_UPDATE` gateway event, and provide `sendPayload = function(guildId, payload) ... end` in the manager options to forward voice payloads (OP4) to your gateway.
+If you're not using the Discordia or discord.lua integration, call `lavalink:handleVoiceUpdate(packet)` yourself for every `VOICE_STATE_UPDATE` and `VOICE_SERVER_UPDATE` gateway event, and provide `sendPayload = function(guildId, payload) ... end` in the manager options to forward voice payloads (OP4) to your gateway.
 
 ---
 
