@@ -50,7 +50,7 @@ bot:on("ready", function()
   dbg("DEBUG mode is ON")
   dbg("Lavalink target: %s:%d", LAVALINK_HOST, LAVALINK_PORT)
 
-  local lavalink = lavalinklua.discord_lua(bot, {
+  local lavalink = lavalinklua.discord(bot, {
     clientName = "lavalink-lua/1.0",
     nodes = {
       {
