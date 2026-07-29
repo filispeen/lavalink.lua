@@ -27,39 +27,6 @@ Using the discord.lua integration instead does not require Discordia; install di
 
 ---
 
-## Project Structure
-
-```
-lavalink.lua/
-├── init.lua                    -- Public API entry point
-├── package.lua                 -- Lit package metadata
-├── libs/
-│   ├── LavalinkManager.lua     -- Top-level manager (multi-node, players, events)
-│   ├── Node.lua                -- WebSocket connection to Lavalink, message dispatch
-│   ├── Player.lua              -- Per-guild audio player (play/pause/skip/seek/repeat)
-│   ├── Queue.lua               -- Track queue with history, shuffle, splice
-│   ├── FilterManager.lua       -- All 10 Lavalink v4 audio filters
-│   ├── RestHandler.lua         -- Full Lavalink v4 REST API client
-│   ├── Emitter.lua             -- Event emitter (on/once/off/emit)
-│   └── utils.lua               -- Utilities (buildQuery, deepCopy, etc.)
-├── integrations/
-│   ├── discordia.lua           -- Discordia integration shim
-│   └── discord_lua.lua         -- discord.lua integration shim
-└── example/
-    ├── discordia/
-    │   ├── bot.lua              -- Full example bot (Discordia)
-    │   ├── commands.lua         -- All music commands
-    │   ├── env.lua              -- .env file loader
-    │   └── .env.example         -- Environment variable template
-    └── discord_lua/
-        ├── bot.lua              -- Full example bot (discord.lua)
-        ├── commands.lua         -- All music commands
-        ├── env.lua              -- .env file loader
-        └── .env.example         -- Environment variable template
-```
-
----
-
 ## Quick Start
 
 ```lua
@@ -104,7 +71,7 @@ local lavalinklua = require("lavalink.lua")
 local bot = Bot("Bot TOKEN")
 
 bot:on("ready", function()
-  local lavalink = lavalinklua.discord_lua(bot, {
+  local lavalink = lavalinklua.discord(bot, {
     nodes = {
       {
         id            = "main",
@@ -280,7 +247,7 @@ If you're not using the Discordia or discord.lua integration, call `lavalink:han
 
 ---
 
-## Example Bot
+## Example Bots
 
 The `example/` folder contains two fully working bots with the same music commands, one per integration.
 
@@ -296,34 +263,11 @@ luvit bot.lua
 **discord.lua:**
 
 ```bash
-cd example/discord_lua
+cd example/discord.lua
 cp .env.example .env
 # fill in .env with your values
 luvit bot.lua
 ```
-
-The discord.lua bot tracks voice state via VOICE_STATE_UPDATE, so `!play <query>` works the same way as the Discordia bot: join a voice channel first, then run the command.
-
-**Commands:**
-
-| Command | Description |
-|---------|-------------|
-| `!play <query/url>` | Search and play, or add to queue |
-| `!skip [n]` | Skip current (or to nth track) |
-| `!stop` | Stop and clear queue |
-| `!pause` | Toggle pause/resume |
-| `!resume` | Resume playback |
-| `!queue` | Show current queue |
-| `!nowplaying` | Show current track with position |
-| `!volume [0-1000]` | Get or set volume |
-| `!repeat <off\|track\|queue>` | Set repeat mode |
-| `!shuffle` | Shuffle queue |
-| `!seek <seconds>` | Seek to position |
-| `!filter <name\|reset>` | Apply preset filter (nightcore, vaporwave, 8d, bassboost) |
-| `!dc` | Disconnect and destroy player |
-| `!nodes` | Show all node statuses |
-
-Enable debug logging by setting `DEBUG=true` in `.env`.
 
 ---
 
