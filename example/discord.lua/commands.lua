@@ -1,383 +1,336 @@
-local commands = {}
-local DEBUG    = false
+local lavalinklua = require("lavalink.lua")
+local splitSearchResult = lavalinklua.utils.splitSearchResult
 
-local function setDebug(val)
-  DEBUG = val
+local M = {}
+
+local DEBUG = false
+
+function M.setDebug(value)
+  DEBUG = value
 end
 
 local function dbg(fmt, ...)
   if DEBUG then
-    local ts = os.date("%H:%M:%S")
-    print(string.format("%s [DEBUG] [CMD  ] %s", ts, string.format(fmt, ...)))
+    print(string.format("[%s] [DEBUG] [CMD  ] %s", os.date("%H:%M:%S"), string.format(fmt, ...)))
   end
 end
 
-local function log(level, fmt, ...)
-  local prefix = {
-    INFO  = "[INFO ]",
-    WARN  = "[WARN ]",
-    ERROR = "[ERROR]",
-    PLAY  = "[PLAY ]",
-    CMD   = "[CMD  ]",
-  }
-  local tag = prefix[level] or ("[" .. level .. "]")
-  local ts  = os.date("%H:%M:%S")
-  print(string.format("%s %s [CMD  ] %s", ts, tag, string.format(fmt, ...)))
-end
-
-local function register(name, fn)
-  commands[name] = fn
-end
-
-local function handle(bot, message, lavalink)
-  local prefix  = "!"
-  local content = message.content
-  if content:sub(1, #prefix) ~= prefix then return end
-
-  local withoutPrefix = content:sub(#prefix + 1)
-  local args = {}
-  for word in withoutPrefix:gmatch("%S+") do
-    table.insert(args, word)
-  end
-
-  if #args == 0 then return end
-
-  local cmdName = table.remove(args, 1):lower()
-  local cmd     = commands[cmdName]
-
-  if not cmd then
-    dbg("Unknown command '%s' in guild %s", cmdName, message.guild_id)
-    return
-  end
-
-  dbg("'%s' invoked | guild=%s | args=[%s]",
-    cmdName, message.guild_id, table.concat(args, ", "))
-
-  local ok, err = pcall(cmd, bot, message, args, lavalink)
+function M.notify(bot, channelId, content)
+  if not channelId then return end
+  local ok, err = pcall(function()
+    bot.client.rest:send_message(channelId, { content = content })
+  end)
   if not ok then
-    log("ERROR", "Command '%s' failed: %s", cmdName, tostring(err))
-    message:reply("Error: " .. tostring(err))
+    dbg("notify failed | channel=%s err=%s", channelId, tostring(err))
   end
 end
 
-local function reply(message, text)
-  message:reply(text)
+local function reply(bot, message, content)
+  local ok = pcall(function()
+    message:reply(content)
+  end)
+  if not ok then
+    M.notify(bot, message.channel_id, content)
+  end
+end
+
+local function argsFrom(message)
+  return message.content:match("^%S+%s+(.*)$") or ""
+end
+
+local function getPlayer(bot, guildId)
+  return bot.lavalink and bot.lavalink:getPlayer(guildId)
+end
+
+local function requireVoice(bot, message)
+  local channelId = bot:get_author_voice_channel_id(message)
+  if not channelId then
+    reply(bot, message, "You need to be in a voice channel first.")
+    return nil
+  end
+  return channelId
 end
 
 local function formatDuration(ms)
-  if not ms then return "LIVE" end
-  local secs  = math.floor(ms / 1000)
-  local mins  = math.floor(secs / 60)
-  local hours = math.floor(mins / 60)
-  secs = secs % 60
-  mins = mins % 60
-  if hours > 0 then
-    return string.format("%d:%02d:%02d", hours, mins, secs)
-  end
-  return string.format("%d:%02d", mins, secs)
+  if not ms or ms <= 0 then return "0:00" end
+  local totalSeconds = math.floor(ms / 1000)
+  local minutes = math.floor(totalSeconds / 60)
+  local seconds = totalSeconds % 60
+  return string.format("%d:%02d", minutes, seconds)
 end
 
-register("play", function(bot, message, args, lavalink)
-  if #args == 0 then
-    reply(message, "Usage: `!play <url or search query>`")
-    return
-  end
-
-  local voiceChannelId = bot:get_author_voice_channel_id(message)
-  if not voiceChannelId then
-    reply(message, "You need to be in a voice channel first.")
-    return
-  end
-
-  local guildId = message.guild_id
-  local query   = table.concat(args, " ")
-
-  dbg("play: query='%s' guild=%s voiceChannel=%s", query, guildId, voiceChannelId)
-
-  local player, created = lavalink:createPlayer({
-    guildId        = guildId,
-    voiceChannelId = voiceChannelId,
-    textChannelId  = message.channel_id,
-    selfDeaf       = true,
-  })
-
-  if created then
-    dbg("play: new player created for guild=%s, connecting...", guildId)
-    player:connect()
-  elseif player.voiceChannelId ~= voiceChannelId then
-    dbg("play: player channel changed %s -> %s, reconnecting...",
-      tostring(player.voiceChannelId), voiceChannelId)
-    player.voiceChannelId = voiceChannelId
-    player:connect()
-  else
-    dbg("play: reusing existing player for guild=%s", guildId)
-  end
-
-  dbg("play: searching '%s'...", query)
-  local result = lavalink:search(query)
-
-  if not result then
-    dbg("play: search returned nil for '%s'", query)
-    reply(message, "No results found for: `" .. query .. "`")
-    return
-  end
-
-  dbg("play: loadType=%s", tostring(result.loadType))
-
-  if result.loadType == "empty" or result.loadType == "error" then
-    local errMsg = result.data and result.data.message or "unknown error"
-    dbg("play: load failed - %s", errMsg)
-    reply(message, "No results found for: `" .. query .. "`")
-    return
-  end
-
-  local tracks = {}
-  if result.loadType == "track" then
-    tracks = { result.data }
-    dbg("play: single track loaded - %s", result.data.info and result.data.info.title or "?")
-  elseif result.loadType == "playlist" then
-    tracks = result.data.tracks or {}
-    local name = result.data.info and result.data.info.name or "Unknown"
-    dbg("play: playlist '%s' loaded - %d tracks", name, #tracks)
-    reply(message, string.format("Queued playlist **%s** - %d tracks", name, #tracks))
-  elseif result.loadType == "search" then
-    tracks = { result.data[1] }
-    dbg("play: search result selected - %s",
-      result.data[1] and result.data[1].info and result.data[1].info.title or "?")
-  end
-
-  if #tracks == 0 then
-    dbg("play: no tracks to add after load")
-    reply(message, "Could not load any tracks.")
-    return
-  end
-
-  for _, track in ipairs(tracks) do
-    player.queue:add(track)
-  end
-
-  dbg("play: added %d track(s) to queue (total=%d)", #tracks, player.queue:size())
-
-  if not player.playing then
-    dbg("play: player idle - starting playback")
-    player:play()
-  elseif result.loadType ~= "playlist" and #tracks == 1 then
-    local info = tracks[1].info
-    dbg("play: player busy - track queued at position %d", player.queue:size())
-    reply(message, string.format("Added to queue: **%s** by %s [%s]",
-      info.title, info.author, formatDuration(info.length)))
-  end
-end)
-
-register("skip", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player or not player.playing then
-    reply(message, "Nothing is playing.")
-    return
-  end
-  local skipTo  = tonumber(args[1])
-  dbg("skip: guild=%s skipTo=%s", message.guild_id, tostring(skipTo))
-  local skipped = player:skip(skipTo, false)
-  if skipped and skipped.info then
-    dbg("skip: skipped '%s'", skipped.info.title)
-    reply(message, "Skipped: **" .. skipped.info.title .. "**")
-  else
-    dbg("skip: queue ended after skip")
-    reply(message, "Queue ended.")
-  end
-end)
-
-register("stop", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player then
-    reply(message, "No player found.")
-    return
-  end
-  dbg("stop: guild=%s", message.guild_id)
-  player:stopPlaying(true)
-  reply(message, "Stopped and cleared the queue.")
-end)
-
-register("pause", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player or not player.playing then
-    reply(message, "Nothing is playing.")
-    return
-  end
-  player:pause()
-  dbg("pause: guild=%s paused=%s", message.guild_id, tostring(player.paused))
-  reply(message, player.paused and "Paused." or "Resumed.")
-end)
-
-register("resume", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player then reply(message, "No player.") return end
-  dbg("resume: guild=%s", message.guild_id)
-  player:resume()
-  reply(message, "Resumed.")
-end)
-
-register("queue", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player then reply(message, "No player.") return end
-
-  dbg("queue: guild=%s current=%s upcoming=%d",
-    message.guild_id,
-    player.queue.current and player.queue.current.info and player.queue.current.info.title or "none",
-    player.queue:size())
-
-  local lines = {}
-  if player.queue.current then
-    local info = player.queue.current.info
-    table.insert(lines, string.format("**Now Playing:** %s - %s [%s]",
-      info.title, info.author, formatDuration(info.length)))
-  else
-    table.insert(lines, "*Nothing playing.*")
-  end
-
-  local tracks = player.queue.tracks
-  if #tracks == 0 then
-    table.insert(lines, "*Queue is empty.*")
-  else
-    local shown = math.min(#tracks, 10)
-    for i = 1, shown do
-      local info = tracks[i].info
-      table.insert(lines, string.format("%d. %s - %s [%s]",
-        i, info.title, info.author, formatDuration(info.length)))
+function M.register(bot)
+  bot:command("play", function(message)
+    local query = argsFrom(message)
+    if query == "" then
+      reply(bot, message, "Usage: !play <query or url>")
+      return
     end
-    if #tracks > 10 then
-      table.insert(lines, string.format("*...and %d more*", #tracks - 10))
+
+    local voiceChannelId = requireVoice(bot, message)
+    if not voiceChannelId then return end
+
+    dbg("play requested | guild=%s query=%s", message.guild_id, query)
+
+    local player = getPlayer(bot, message.guild_id)
+    if not player then
+      player = bot.lavalink:createPlayer({
+        guildId = message.guild_id,
+        voiceChannelId = voiceChannelId,
+        textChannelId = message.channel_id,
+        selfDeaf = true,
+      })
+      player:connect()
     end
-  end
 
-  reply(message, table.concat(lines, "\n"))
-end)
+    local ok, result = pcall(function()
+      return bot.lavalink:search(query)
+    end)
 
-register("nowplaying", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player or not player.queue.current then
-    reply(message, "Nothing is playing.")
-    return
-  end
-  local info = player.queue.current.info
-  local pos  = formatDuration(player:getPosition())
-  local dur  = formatDuration(info.length)
-  dbg("nowplaying: guild=%s '%s' pos=%s/%s", message.guild_id, info.title, pos, dur)
-  reply(message, string.format(
-    "**Now Playing:** %s\nby **%s**\n`[%s / %s]`\n<%s>",
-    info.title, info.author, pos, dur, info.uri or ""))
-end)
-
-register("volume", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player then reply(message, "No player.") return end
-
-  local vol = tonumber(args[1])
-  if not vol then
-    dbg("volume: guild=%s current=%d", message.guild_id, player.volume)
-    reply(message, "Current volume: **" .. player.volume .. "**")
-    return
-  end
-  dbg("volume: guild=%s set %d -> %d", message.guild_id, player.volume, vol)
-  player:setVolume(vol)
-  reply(message, "Volume set to **" .. player.volume .. "**")
-end)
-
-register("repeat", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player then reply(message, "No player.") return end
-
-  local mode = (args[1] or ""):lower()
-  if mode ~= "off" and mode ~= "track" and mode ~= "queue" then
-    reply(message, "Usage: `!repeat <off|track|queue>`")
-    return
-  end
-  dbg("repeat: guild=%s mode=%s", message.guild_id, mode)
-  player:setRepeatMode(mode)
-  reply(message, "Repeat mode set to **" .. mode .. "**")
-end)
-
-register("shuffle", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player or player.queue:isEmpty() then
-    reply(message, "The queue is empty.")
-    return
-  end
-  dbg("shuffle: guild=%s shuffling %d tracks", message.guild_id, player.queue:size())
-  player.queue:shuffle()
-  reply(message, "Queue shuffled!")
-end)
-
-register("seek", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player or not player.playing then
-    reply(message, "Nothing is playing.")
-    return
-  end
-  local secs = tonumber(args[1])
-  if not secs then reply(message, "Usage: `!seek <seconds>`") return end
-  dbg("seek: guild=%s -> %ds (%dms)", message.guild_id, secs, secs * 1000)
-  player:seek(secs * 1000)
-  reply(message, "Seeked to " .. formatDuration(secs * 1000))
-end)
-
-register("dc", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player then reply(message, "No player.") return end
-  dbg("dc: destroying player for guild=%s", message.guild_id)
-  player:disconnect(true)
-  reply(message, "Disconnected and destroyed player.")
-end)
-
-register("nodes", function(bot, message, args, lavalink)
-  local nodes = lavalink:getAllNodes()
-  dbg("nodes: listing %d node(s)", #nodes)
-  local lines = { "**Lavalink Nodes:**" }
-  for _, node in ipairs(nodes) do
-    local status = node:isUsable() and "READY"
-      or (node.connected and "CONNECTED" or "OFFLINE")
-    table.insert(lines, string.format("- `%s` - %s | Players: %d | CPU: %.1f%%",
-      node.options.id, status,
-      node:getPlayersCount(),
-      node:getCpuLoad() * 100))
-  end
-  reply(message, table.concat(lines, "\n"))
-end)
-
-register("filter", function(bot, message, args, lavalink)
-  local player = lavalink:getPlayer(message.guild_id)
-  if not player then reply(message, "No player.") return end
-
-  local name = (args[1] or ""):lower()
-  dbg("filter: guild=%s filter='%s'", message.guild_id, name)
-
-  if name == "nightcore" then
-    player.filters:setTimescale({ speed = 1.3, pitch = 1.3, rate = 1.0 })
-    reply(message, "Nightcore filter enabled.")
-  elseif name == "vaporwave" then
-    player.filters:setTimescale({ speed = 0.85, pitch = 0.85, rate = 1.0 })
-    reply(message, "Vaporwave filter enabled.")
-  elseif name == "8d" then
-    player.filters:setRotation({ rotationHz = 0.2 })
-    reply(message, "8D audio filter enabled.")
-  elseif name == "bassboost" then
-    local bands = {}
-    for i = 0, 4 do
-      table.insert(bands, { band = i, gain = 0.35 })
+    if not ok then
+      reply(bot, message, "Search failed: " .. tostring(result))
+      return
     end
-    player.filters:setEqualizer(bands)
-    reply(message, "Bass boost filter enabled.")
-  elseif name == "reset" then
-    player.filters:resetFilters()
-    dbg("filter: guild=%s all filters reset", message.guild_id)
-    reply(message, "All filters reset.")
-  else
-    reply(message, "Available filters: `nightcore`, `vaporwave`, `8d`, `bassboost`, `reset`")
-  end
-end)
 
-return {
-  register = register,
-  handle   = handle,
-  setDebug = setDebug,
-}
+    if result.loadType == "error" then
+      local msg = result.data and result.data.message or "unknown error"
+      reply(bot, message, "Load error: " .. msg)
+      return
+    end
+
+    if result.loadType == "empty" then
+      reply(bot, message, "No results found.")
+      return
+    end
+
+    local tracks = splitSearchResult(result.loadType, result)
+    if not tracks or #tracks == 0 then
+      reply(bot, message, "No results found.")
+      return
+    end
+
+    player.queue:add(tracks)
+
+    if result.loadType == "playlist" then
+      local name = result.data and result.data.info and result.data.info.name or "unknown"
+      reply(bot, message, string.format("Queued playlist **%s** (%d tracks).", name, #tracks))
+    else
+      local track = tracks[1]
+      reply(bot, message, string.format("Queued: **%s** by %s [%s]",
+        track.info.title, track.info.author, formatDuration(track.info.length)))
+    end
+
+    if not player.playing and not player.paused then
+      player:play()
+    end
+  end, "Play a track or add it to the queue")
+
+  bot:command("skip", function(message)
+    local player = getPlayer(bot, message.guild_id)
+    if not player then
+      reply(bot, message, "Nothing is playing.")
+      return
+    end
+    local ok, err = pcall(function()
+      player:skip()
+    end)
+    if ok then
+      reply(bot, message, "Skipped.")
+    else
+      reply(bot, message, "Could not skip: " .. tostring(err))
+    end
+  end, "Skip the current track")
+
+  bot:command("pause", function(message)
+    local player = getPlayer(bot, message.guild_id)
+    if not player then
+      reply(bot, message, "Nothing is playing.")
+      return
+    end
+    player:pause(true)
+    reply(bot, message, "Paused.")
+  end, "Pause playback")
+
+  bot:command("resume", function(message)
+    local player = getPlayer(bot, message.guild_id)
+    if not player then
+      reply(bot, message, "Nothing is playing.")
+      return
+    end
+    player:resume()
+    reply(bot, message, "Resumed.")
+  end, "Resume playback")
+
+  bot:command("stop", function(message)
+    local player = getPlayer(bot, message.guild_id)
+    if not player then
+      reply(bot, message, "Nothing is playing.")
+      return
+    end
+    player:stopPlaying(true)
+    reply(bot, message, "Stopped and cleared the queue.")
+  end, "Stop playback and clear the queue")
+
+  bot:command("leave", function(message)
+    local player = getPlayer(bot, message.guild_id)
+    if not player then
+      reply(bot, message, "I'm not connected to voice.")
+      return
+    end
+    player:destroy("user requested")
+    reply(bot, message, "Disconnected.")
+  end, "Leave the voice channel")
+
+  bot:command("volume", function(message)
+    local arg = argsFrom(message)
+    local vol = tonumber(arg)
+    local player = getPlayer(bot, message.guild_id)
+    if not player then
+      reply(bot, message, "Nothing is playing.")
+      return
+    end
+    if not vol then
+      reply(bot, message, string.format("Current volume: %d", player.volume or 100))
+      return
+    end
+    local ok, err = pcall(function()
+      player:setVolume(vol)
+    end)
+    if ok then
+      reply(bot, message, string.format("Volume set to %d.", vol))
+    else
+      reply(bot, message, "Could not set volume: " .. tostring(err))
+    end
+  end, "Get or set player volume")
+
+  bot:command("seek", function(message)
+    local seconds = tonumber(argsFrom(message))
+    if not seconds then
+      reply(bot, message, "Usage: !seek <seconds>")
+      return
+    end
+    local player = getPlayer(bot, message.guild_id)
+    if not player then
+      reply(bot, message, "Nothing is playing.")
+      return
+    end
+    local ok, err = pcall(function()
+      player:seek(seconds * 1000)
+    end)
+    if ok then
+      reply(bot, message, string.format("Seeked to %ds.", seconds))
+    else
+      reply(bot, message, "Could not seek: " .. tostring(err))
+    end
+  end, "Seek to a position in seconds")
+
+  bot:command("repeat", function(message)
+    local arg = argsFrom(message):lower()
+    if arg ~= "off" and arg ~= "track" and arg ~= "queue" then
+      reply(bot, message, "Usage: !repeat <off|track|queue>")
+      return
+    end
+    local player = getPlayer(bot, message.guild_id)
+    if not player then
+      reply(bot, message, "Nothing is playing.")
+      return
+    end
+    player:setRepeatMode(arg)
+    reply(bot, message, "Repeat mode set to " .. arg .. ".")
+  end, "Set repeat mode: off, track, or queue")
+
+  bot:command("queue", function(message)
+    local player = getPlayer(bot, message.guild_id)
+    if not player or not player.queue or #player.queue.tracks == 0 then
+      reply(bot, message, "The queue is empty.")
+      return
+    end
+    local lines = {}
+    for i, track in ipairs(player.queue.tracks) do
+      if i > 10 then
+        table.insert(lines, string.format("...and %d more", #player.queue.tracks - 10))
+        break
+      end
+      table.insert(lines, string.format("%d. %s - %s", i, track.info.title, track.info.author))
+    end
+    reply(bot, message, table.concat(lines, "\n"))
+  end, "Show the current queue")
+
+  bot:command("nowplaying", function(message)
+    local player = getPlayer(bot, message.guild_id)
+    if not player or not player.queue or not player.queue.current then
+      reply(bot, message, "Nothing is playing.")
+      return
+    end
+    local track = player.queue.current
+    reply(bot, message, string.format("Now playing: **%s** by %s [%s / %s]",
+      track.info.title, track.info.author,
+      formatDuration(player:getPosition()), formatDuration(track.info.length)))
+  end, "Show the currently playing track")
+
+  bot:command("nodes", function(message)
+    if not bot.lavalink then
+      reply(bot, message, "Lavalink is not initialized.")
+      return
+    end
+    local nodes = bot.lavalink:getAllNodes()
+    if #nodes == 0 then
+      reply(bot, message, "No nodes configured.")
+      return
+    end
+    local lines = {}
+    for _, node in ipairs(nodes) do
+      table.insert(lines, string.format("%s | connected=%s players=%d cpu=%.1f%%",
+        node.options.id,
+        tostring(node.connected),
+        node:getPlayersCount(),
+        node:getCpuLoad() * 100))
+    end
+    reply(bot, message, table.concat(lines, "\n"))
+  end, "Show connected Lavalink nodes")
+
+  bot:command("filter", function(message)
+    local arg = argsFrom(message):lower()
+    local player = getPlayer(bot, message.guild_id)
+    if not player then
+      reply(bot, message, "Nothing is playing.")
+      return
+    end
+
+    if arg == "reset" then
+      player.filters:resetFilters()
+      reply(bot, message, "Filters reset.")
+    elseif arg == "nightcore" then
+      player.filters:setTimescale({ speed = 1.2, pitch = 1.2, rate = 1.0 })
+      reply(bot, message, "Nightcore filter applied.")
+    elseif arg == "vaporwave" then
+      player.filters:setTimescale({ speed = 0.8, pitch = 0.8, rate = 1.0 })
+      reply(bot, message, "Vaporwave filter applied.")
+    elseif arg == "8d" then
+      player.filters:setRotation({ rotationHz = 0.2 })
+      reply(bot, message, "8D filter applied.")
+    else
+      reply(bot, message, "Usage: !filter <nightcore|vaporwave|8d|reset>")
+    end
+  end, "Apply an audio filter")
+
+  bot:command("help", function(message)
+    local lines = {
+      "!play <query|url> - play a track or add to queue",
+      "!skip - skip current track",
+      "!pause / !resume - pause or resume playback",
+      "!stop - stop and clear queue",
+      "!leave - disconnect from voice",
+      "!volume [0-1000] - get or set volume",
+      "!seek <seconds> - seek to position",
+      "!repeat <off|track|queue> - set repeat mode",
+      "!queue - show queue",
+      "!nowplaying - show current track",
+      "!filter <nightcore|vaporwave|8d|reset> - apply audio filter",
+      "!nodes - show connected Lavalink nodes",
+    }
+    reply(bot, message, table.concat(lines, "\n"))
+  end, "Show this help message")
+end
+
+return M

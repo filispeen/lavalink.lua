@@ -1,4 +1,4 @@
-local Bot = require("discord.lua")
+local discord = require("discord.lua")
 local lavalinklua = require("lavalink.lua")
 local commands = require("./commands")
 local env = require("./env")
@@ -6,61 +6,57 @@ env.load()
 
 local DEBUG = process.env.DEBUG == "true" or process.env.DEBUG == "1"
 
-local TOKEN         = process.env.TOKEN        or error("TOKEN env var not set")
+local TOKEN = process.env.TOKEN or error("TOKEN env var not set")
 local LAVALINK_HOST = process.env.LAVALINK_HOST or "localhost"
 local LAVALINK_PORT = tonumber(process.env.LAVALINK_PORT) or 2333
 local LAVALINK_PASS = process.env.LAVALINK_PASS or "youshallnotpass"
 
 local function log(level, fmt, ...)
   local prefix = {
-    INFO  = "[INFO ]",
-    WARN  = "[WARN ]",
+    INFO = "[INFO ]",
+    WARN = "[WARN ]",
     ERROR = "[ERROR]",
     DEBUG = "[DEBUG]",
-    NODE  = "[NODE ]",
+    NODE = "[NODE ]",
     TRACK = "[TRACK]",
-    PLAY  = "[PLAY ]",
     VOICE = "[VOICE]",
-    CMD   = "[CMD  ]",
-    BOT   = "[BOT  ]",
+    BOT = "[BOT  ]",
   }
   local tag = prefix[level] or ("[" .. level .. "]")
-  local ts  = os.date("%H:%M:%S")
-  print(string.format("%s %s %s", ts, tag, string.format(fmt, ...)))
+  print(string.format("%s %s %s", os.date("%H:%M:%S"), tag, string.format(fmt, ...)))
 end
 
 local function dbg(fmt, ...)
   if DEBUG then log("DEBUG", fmt, ...) end
 end
 
-local function send(bot, channel_id, content)
-  if not channel_id then return end
-  local ok, err = pcall(function()
-    return bot.client.rest:send_message(channel_id, { content = content })
-  end)
-  if not ok then
-    log("ERROR", "Failed to send message to channel %s: %s", channel_id, tostring(err))
-  end
-end
+-- Prefix commands below need GUILD_MESSAGES to see the message and
+-- MESSAGE_CONTENT (privileged, enable it on the dev portal too) to read
+-- message.content. GUILD_VOICE_STATES is needed for get_author_voice_channel_id.
+local intents = discord.enums.combine_intents(
+  discord.enums.INTENTS.GUILDS,
+  discord.enums.INTENTS.GUILD_MESSAGES,
+  discord.enums.INTENTS.MESSAGE_CONTENT,
+  discord.enums.INTENTS.GUILD_VOICE_STATES
+)
 
-local bot = Bot(TOKEN)
+local bot = discord.Bot(nil, intents)
 
 bot:on("ready", function()
   log("BOT", "Logged in as %s (id: %s)", bot.user.username, bot.user.id)
-  dbg("DEBUG mode is ON")
   dbg("Lavalink target: %s:%d", LAVALINK_HOST, LAVALINK_PORT)
 
   local lavalink = lavalinklua.discord(bot, {
     clientName = "lavalink-lua/1.0",
     nodes = {
       {
-        id             = "main",
-        host           = LAVALINK_HOST,
-        port           = LAVALINK_PORT,
-        authorization  = LAVALINK_PASS,
-        secure         = false,
-        resuming       = true,
-        resumeTimeout  = 60,
+        id = "main",
+        host = LAVALINK_HOST,
+        port = LAVALINK_PORT,
+        authorization = LAVALINK_PASS,
+        secure = false,
+        resuming = true,
+        resumeTimeout = 60,
         reconnectTries = 5,
         reconnectDelay = 5000,
       },
@@ -68,7 +64,10 @@ bot:on("ready", function()
     playerOptions = { defaultVolume = 100 },
   })
 
+  bot.lavalink = lavalink
+
   commands.setDebug(DEBUG)
+  commands.register(bot)
 
   lavalink:on("nodeConnect", function(node)
     log("NODE", "'%s' - WebSocket connected", node.options.id)
@@ -115,10 +114,7 @@ bot:on("ready", function()
 
   lavalink:on("playerUpdate", function(player, state)
     dbg("PlayerUpdate | guild=%s pos=%dms ping=%dms connected=%s",
-      player.guildId,
-      state.position or 0,
-      state.ping or 0,
-      tostring(state.connected))
+      player.guildId, state.position or 0, state.ping or 0, tostring(state.connected))
   end)
 
   lavalink:on("playerPause", function(player)
@@ -144,7 +140,8 @@ bot:on("ready", function()
       log("TRACK", "Start | guild=%s | %s - %s [%s]",
         player.guildId, info.title, info.author,
         info.length and string.format("%ds", math.floor(info.length / 1000)) or "LIVE")
-      send(bot, player.textChannelId, string.format("Now playing: **%s** by %s", info.title, info.author))
+      commands.notify(bot, player.textChannelId,
+        string.format("Now playing: **%s** by %s", info.title, info.author))
     end
   end)
 
@@ -157,7 +154,7 @@ bot:on("ready", function()
     local title = track and track.info and track.info.title or "?"
     local msg   = type(err) == "table" and (err.message or "unknown") or tostring(err)
     log("ERROR", "Track error | guild=%s track='%s' err=%s", player.guildId, title, msg)
-    send(bot, player.textChannelId, string.format("Track error: %s - skipping...", msg))
+    commands.notify(bot, player.textChannelId, string.format("Track error: %s - skipping...", msg))
     player:skip(nil, false)
   end)
 
@@ -165,13 +162,14 @@ bot:on("ready", function()
     local title = track and track.info and track.info.title or "?"
     log("WARN", "Track stuck | guild=%s track='%s' threshold=%dms",
       player.guildId, title, threshold)
-    send(bot, player.textChannelId, string.format("Track got stuck (>%dms) - skipping...", threshold))
+    commands.notify(bot, player.textChannelId,
+      string.format("Track got stuck (>%dms) - skipping...", threshold))
     player:skip(nil, false)
   end)
 
   lavalink:on("queueEnd", function(player)
     log("TRACK", "Queue ended | guild=%s", player.guildId)
-    send(bot, player.textChannelId, "Queue finished. Add more songs!")
+    commands.notify(bot, player.textChannelId, "Queue finished. Add more songs!")
   end)
 
   lavalink:on("socketClosed", function(player, code, reason, byRemote)
@@ -195,12 +193,18 @@ bot:on("ready", function()
 
   lavalink:init()
   dbg("LavalinkManager initialized, connecting nodes...")
-
-  bot:on("message_create", function(message)
-    if message.author and message.author.bot then return end
-    if not message.guild_id then return end
-    commands.handle(bot, message, lavalink)
-  end)
 end)
 
-bot:run()
+bot:on("shard_ready", function(shard_id)
+  dbg("Shard %s is ready", tostring(shard_id))
+end)
+
+bot:on("shard_disconnect", function(shard_id)
+  log("WARN", "Shard %s disconnected", tostring(shard_id))
+end)
+
+bot:on("shard_error", function(shard_id, _shard, err)
+  log("ERROR", "Shard %s errored: %s", tostring(shard_id), tostring(err))
+end)
+
+bot:run(TOKEN)
