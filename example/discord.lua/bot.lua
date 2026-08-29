@@ -6,10 +6,10 @@ env.load()
 
 local DEBUG = process.env.DEBUG == "true" or process.env.DEBUG == "1"
 
-local TOKEN = process.env.TOKEN or error("TOKEN env var not set")
+local TOKEN = process.env.DISCORD_TOKEN or process.env.TOKEN or error("DISCORD_TOKEN env var not set")
 local LAVALINK_HOST = process.env.LAVALINK_HOST or "localhost"
 local LAVALINK_PORT = tonumber(process.env.LAVALINK_PORT) or 2333
-local LAVALINK_PASS = process.env.LAVALINK_PASS or "youshallnotpass"
+local LAVALINK_PASS = process.env.LAVALINK_PASSWORD or process.env.LAVALINK_PASS or "youshallnotpass"
 
 local function log(level, fmt, ...)
   local prefix = {
@@ -30,17 +30,14 @@ local function dbg(fmt, ...)
   if DEBUG then log("DEBUG", fmt, ...) end
 end
 
--- Prefix commands below need GUILD_MESSAGES to see the message and
--- MESSAGE_CONTENT (privileged, enable it on the dev portal too) to read
--- message.content. GUILD_VOICE_STATES is needed for get_author_voice_channel_id.
+-- Slash commands only need guild and voice-state events.
 local intents = discord.enums.combine_intents(
   discord.enums.INTENTS.GUILDS,
-  discord.enums.INTENTS.GUILD_MESSAGES,
-  discord.enums.INTENTS.MESSAGE_CONTENT,
   discord.enums.INTENTS.GUILD_VOICE_STATES
 )
 
 local bot = discord.Bot(nil, intents)
+commands.register(bot, discord)
 
 bot:on("ready", function()
   log("BOT", "Logged in as %s (id: %s)", bot.user.username, bot.user.id)
@@ -65,9 +62,8 @@ bot:on("ready", function()
   })
 
   bot.lavalink = lavalink
+  bot.client.lavalink = lavalink
 
-  commands.setDebug(DEBUG)
-  commands.register(bot)
 
   lavalink:on("nodeConnect", function(node)
     log("NODE", "'%s' - WebSocket connected", node.options.id)
