@@ -7,16 +7,30 @@ local Emitter = require("./Emitter")
 local Node = setmetatable({}, { __index = Emitter })
 Node.__index = Node
 
+local function parseUrl(url)
+  local scheme, host, port = tostring(url):match("^(https?)://([^:/]+):?(%d*)/?")
+  if not scheme then
+    error("[Node] url must be an http:// or https:// Lavalink URL")
+  end
+  return host, tonumber(port) or (scheme == "https" and 443 or 80), scheme == "https"
+end
+
 function Node.new(manager, options)
+  local urlHost, urlPort, urlSecure
+  if options.url then
+    urlHost, urlPort, urlSecure = parseUrl(options.url)
+  end
+  local host = options.host or urlHost or "localhost"
+  local port = options.port or urlPort or 2333
   local self = setmetatable(Emitter.new(), Node)
 
   self.manager = manager
   self.options = {
-    host           = options.host or "localhost",
-    port           = options.port or 2333,
-    authorization  = options.authorization or "youshallnotpass",
-    secure         = options.secure or false,
-    id             = options.id or (options.host .. ":" .. tostring(options.port or 2333)),
+    host           = host,
+    port           = port,
+    authorization  = options.authorization or options.password or "youshallnotpass",
+    secure         = options.secure == true or urlSecure == true,
+    id             = options.id or (host .. ":" .. tostring(port)),
     sessionId      = options.sessionId or nil,
     resuming       = options.resuming ~= false,
     resumeTimeout  = options.resumeTimeout or 60,
@@ -25,13 +39,14 @@ function Node.new(manager, options)
     regions        = options.regions or {},
   }
 
-  self.sessionId          = nil
+  self.sessionId          = options.sessionId or nil
   self.connected          = false
   self.ready              = false
   self._reconnectAttempts = 0
   self._wsRead            = nil
   self._wsWrite           = nil
   self._reconnectTimer    = nil
+  self._manualDisconnect  = false
   self.stats = {
     players = 0, playingPlayers = 0, uptime = 0,
     memory = {}, cpu = {}, frameStats = nil,
@@ -44,6 +59,7 @@ end
 
 function Node:connect()
   self:_clearReconnectTimer()
+  self._manualDisconnect = false
 
   coroutine.wrap(function()
     local wsOptions = {
@@ -103,7 +119,9 @@ function Node:connect()
     end
 
     self.manager:emit("nodeDisconnect", self)
-    self:_scheduleReconnect()
+    if not self._manualDisconnect then
+      self:_scheduleReconnect()
+    end
   end)()
 end
 
@@ -179,6 +197,7 @@ function Node:send(payload)
 end
 
 function Node:disconnect(reason)
+  self._manualDisconnect = true
   self.connected = false
   self.ready     = false
   self:_clearReconnectTimer()
