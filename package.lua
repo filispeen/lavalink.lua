@@ -1,6 +1,6 @@
 return {
   name = "filispeen/lavalink.lua",
-  version = "0.2.7",
+  version = "REPLACE_ME",
   description = "Feature-rich Lavalink v4 client for Luvit (Lua)",
   tags = { "lavalink", "discord", "music", "audio", "luvit" },
   license = "MIT",

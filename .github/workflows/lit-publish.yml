@@ -12,12 +12,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
 
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.LIT_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+      - name: Write a version into package.lua
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sed -i "s/version = \"REPLACE_ME\"/version = \"${version}\"/" package.lua
 
       - name: Install lit
         run: |
