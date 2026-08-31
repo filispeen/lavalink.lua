@@ -12,12 +12,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.LIT_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+      - name: Write a version into package.lua
+        run: |
+          REF=${{ github.event.workflow_run.head_branch }}
+          version=${REF#v}
+          sed -i "s/version = \"REPLACE_ME\"/version = \"${version}\"/" package.lua
 
       - name: Install lit
         run: |
