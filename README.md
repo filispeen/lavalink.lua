@@ -138,6 +138,14 @@ player:play()
 | `queueEnd` | `player` | Queue finished |
 | `socketClosed` | `player, code, reason, byRemote` | Discord voice WS closed |
 | `error` | `player, error` | Generic player error |
+| `nodeLinkReady` | `node, info` | Node was identified as NodeLink |
+| `sponsorBlockSegmentsLoaded` | `player, segments, data` | NodeLink loaded SponsorBlock segments |
+| `sponsorBlockSegmentSkipped` | `player, segment, data` | NodeLink skipped a segment |
+| `mixStart` / `mixEnd` | `player, data` | NodeLink mixer lifecycle event |
+| `lyricsFound` | `player, lyrics, data` | Lyrics were resolved for the current track |
+| `lyricsLine` | `player, lineIndex, data` | Synchronized lyrics advanced a line |
+| `voiceReceiveFrame` | `node, guildId, frame, message` | Raw NodeLink Opus or PCM voice frame |
+| `nodeLinkEvent` | `node, player?, data` | A NodeLink event without a dedicated convenience event |
 
 ---
 
@@ -184,6 +192,14 @@ player.filters:setPluginFilters(table)
 player.filters:resetFilters()
 player.filters:resetFilter(filterName)
 player.filters:apply()                     -- Re-send current filter state to Lavalink
+
+-- NodeLink filters
+player.filters:setEcho({ delay = 500, feedback = 0.3, mix = 0.5 })
+player.filters:setChorus({ rate = 1.5, depth = 0.4, delay = 20, mix = 0.5 })
+player.filters:setCompressor({ threshold = -18, ratio = 3, attack = 10, release = 100, gain = 0 })
+player.filters:setHighPass({ smoothing = 2.0 })
+player.filters:setPhaser({ stages = 4, rate = 0.5, depth = 0.6, feedback = 0.3, mix = 0.5 })
+player.filters:setSpatial(options)
 ```
 
 ---
@@ -206,7 +222,55 @@ lavalink:search(query, options?)           -- REST loadTracks, options = { sourc
 lavalink:decodeTrack(encoded, nodeId?)
 lavalink:decodeTracks(encodedList, nodeId?)
 
+-- NodeLink helpers
+lavalink:refreshNodeInfo(nodeId?)
+lavalink:getNodeLinkConnection(nodeId?)
+lavalink:getNodeLinkWorkers(nodeId?)
+lavalink:patchNodeLinkWorker(data, nodeId?)
+lavalink:getLyrics(encodedTrack, { node?, lang? })
+lavalink:getChapters(encodedTrack, nodeId?)
+lavalink:getMeaning(encodedTrack, { node?, lang? })
+lavalink:getTrackStream(encodedTrack, { node?, itag? })
+
 lavalink:handleVoiceUpdate(packet)         -- Feed raw VOICE_STATE_UPDATE / VOICE_SERVER_UPDATE
+```
+
+## NodeLink extensions
+
+When a node becomes ready, `node.isNodeLink` is set from `/v4/info`; listen to
+`nodeLinkReady` if the application needs to wait for that detection. All NodeLink
+methods are opt-in, so normal Lavalink v4 nodes are unaffected.
+
+```lua
+-- Metadata for the current track
+local lyrics = player:getLyrics("uk")
+local chapters = player:getChapters()
+
+-- SponsorBlock
+player:updateSponsorBlock({ enabled = true, categories = { "sponsor", "intro" } })
+player:setSponsorBlockSegments(segments)    -- optional custom segments
+player:subscribeLyrics(true)                -- emits lyricsFound / lyricsLine
+
+-- Overlay a TTS/SFX/music track. `track` can be a result from loadtracks.
+local mix = player:addMix(track, 0.8)
+player:updateMix(mix.mixId, 0.5)
+player:removeMix(mix.mixId)
+
+-- Select an alternate audio track and preload the next encoded track.
+player:play({ audioTrackId = "en.4", nextTrack = nextTrack })
+
+-- Experimental voice receive: configure voiceReceive in NodeLink first.
+player:startVoiceReceive(function(guildId, frame)
+  -- frame is a binary Opus or PCM S16LE payload, per NodeLink configuration.
+end)
+```
+
+The additional source prefixes (for example `spsearch:`, `dzsearch:`, `gtts:`
+and `search:`) already work through `lavalink:search`, because its `source`
+option is passed directly to NodeLink:
+
+```lua
+local result = lavalink:search("never gonna give you up", { source = "spsearch" })
 ```
 
 `createPlayer` options:

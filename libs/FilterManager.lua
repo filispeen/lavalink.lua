@@ -100,6 +100,44 @@ function FilterManager:setPluginFilters(filters)
   return self
 end
 
+-- NodeLink-native filters.  They use the same Lavalink v4 `filters` payload,
+-- so they can be combined with any of the standard filters above.
+function FilterManager:setEcho(options)
+  self.data.echo = options
+  self:_apply()
+  return self
+end
+
+function FilterManager:setChorus(options)
+  self.data.chorus = options
+  self:_apply()
+  return self
+end
+
+function FilterManager:setCompressor(options)
+  self.data.compressor = options
+  self:_apply()
+  return self
+end
+
+function FilterManager:setHighPass(options)
+  self.data.highpass = options
+  self:_apply()
+  return self
+end
+
+function FilterManager:setPhaser(options)
+  self.data.phaser = options
+  self:_apply()
+  return self
+end
+
+function FilterManager:setSpatial(options)
+  self.data.spatial = options
+  self:_apply()
+  return self
+end
+
 function FilterManager:resetFilters()
   self.data = {}
   self:_apply()

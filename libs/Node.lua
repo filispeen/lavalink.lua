@@ -52,6 +52,8 @@ function Node.new(manager, options)
     memory = {}, cpu = {}, frameStats = nil,
   }
   self.info = nil
+  self.isNodeLink = false
+  self._voiceReceivers = {}
   self.rest = RestHandler.new(self)
 
   return self
@@ -147,6 +149,14 @@ function Node:_handleMessage(raw)
 
     self.manager:emit("nodeReady", self, data.resumed, data.sessionId)
 
+    -- /info is part of Lavalink v4, and NodeLink identifies itself with an
+    -- isNodelink flag.  Detection is best-effort so a server with a restricted
+    -- info endpoint remains usable as a normal Lavalink node.
+    coroutine.wrap(function()
+      local ok, info = pcall(self.refreshInfo, self)
+      if not ok then self.manager:emit("nodeInfoError", self, info) end
+    end)()
+
   elseif op == "playerUpdate" then
     local player = self.manager.players[data.guildId]
     if player then player:_handlePlayerUpdate(data.state) end
@@ -171,10 +181,18 @@ function Node:_handleMessage(raw)
 end
 
 function Node:_handleEvent(data)
-  local player = self.manager.players[data.guildId]
-  if not player then return end
-
   local t = data.type
+  if t == "WorkerFailedEvent" then
+    self.manager:emit("nodeLinkWorkerFailed", self, data.affectedGuilds or {}, data.message, data)
+    return
+  end
+
+  local player = self.manager.players[data.guildId]
+  if not player then
+    self.manager:emit("nodeLinkEvent", self, nil, data)
+    return
+  end
+
   if t == "TrackStartEvent" then
     player:_handleTrackStart(data.track)
   elseif t == "TrackEndEvent" then
@@ -185,6 +203,24 @@ function Node:_handleEvent(data)
     player:_handleTrackStuck(data.track, data.thresholdMs)
   elseif t == "WebSocketClosedEvent" then
     player:_handleWebSocketClosed(data.code, data.reason, data.byRemote)
+  elseif t == "SponsorBlockSegmentsLoadedEvent" then
+    self.manager:emit("sponsorBlockSegmentsLoaded", player, data.segments or {}, data)
+  elseif t == "SponsorBlockSegmentSkippedEvent" then
+    self.manager:emit("sponsorBlockSegmentSkipped", player, data.segment, data)
+  elseif t == "MixStartedEvent" then
+    self.manager:emit("mixStart", player, data)
+  elseif t == "MixEndedEvent" then
+    self.manager:emit("mixEnd", player, data)
+  elseif t == "LyricsFoundEvent" then
+    self.manager:emit("lyricsFound", player, data.lyrics, data)
+  elseif t == "LyricsLineEvent" then
+    self.manager:emit("lyricsLine", player, data.lineIndex, data)
+  elseif t == "StreamMetadataEvent" then
+    self.manager:emit("streamMetadata", player, data.stream, data)
+  else
+    -- Preserve every future NodeLink event even if this version does not yet
+    -- expose a convenience event name for it.
+    self.manager:emit("nodeLinkEvent", self, player, data)
   end
 end
 
@@ -201,6 +237,9 @@ function Node:disconnect(reason)
   self.connected = false
   self.ready     = false
   self:_clearReconnectTimer()
+  for guildId in pairs(self._voiceReceivers) do
+    self:stopVoiceReceive(guildId)
+  end
   if self._wsWrite then
     pcall(self._wsWrite, false)
     self._wsWrite = nil
@@ -255,7 +294,86 @@ function Node:getPlayersCount()
 end
 
 function Node:getCpuLoad()
-  return self.stats.cpu and self.stats.cpu.lavalinkLoad or 0
+  local cpu = self.stats.cpu or {}
+  return cpu.lavalinkLoad or cpu.processLoad or 0
+end
+
+function Node:refreshInfo()
+  local info = self.rest:getInfo()
+  self.info = info
+  self.isNodeLink = info and info.isNodelink == true or false
+  self.manager:emit("nodeInfo", self, info)
+  if self.isNodeLink then self.manager:emit("nodeLinkReady", self, info) end
+  return info
+end
+
+function Node:_voiceReceiverHeaders()
+  return {
+    { "Authorization", self.options.authorization },
+    { "User-Id", tostring(self.manager.options.clientId) },
+    { "Client-Name", self.manager.options.clientName or "lavalink-lua/1.0" },
+  }
+end
+
+-- Opens NodeLink's experimental receive-only voice stream.  Frames are passed
+-- through unchanged: depending on the NodeLink configuration they are Opus or
+-- PCM S16LE binary payloads.
+function Node:startVoiceReceive(guildId, onFrame)
+  assert(guildId, "[Node] guildId required for voice receive")
+  assert(type(onFrame) == "function", "[Node] onFrame callback required")
+  self:stopVoiceReceive(guildId)
+
+  local receiver = { guildId = tostring(guildId), write = nil, active = true }
+  self._voiceReceivers[receiver.guildId] = receiver
+
+  coroutine.wrap(function()
+    local wsOptions = {
+      host = self.options.host,
+      port = self.options.port,
+      tls = self.options.secure,
+      pathname = "/v4/websocket/voice/" .. receiver.guildId,
+      headers = self:_voiceReceiverHeaders(),
+    }
+    local ok, res, read, write = pcall(coroWs.connect, wsOptions)
+    if not ok or not res then
+      receiver.active = false
+      self._voiceReceivers[receiver.guildId] = nil
+      self.manager:emit("voiceReceiveError", self, receiver.guildId,
+        ok and "WS connect failed" or tostring(res))
+      return
+    end
+
+    receiver.write = write
+    self.manager:emit("voiceReceiveConnect", self, receiver.guildId)
+    local readOk, readErr = pcall(function()
+      for msg in read do
+        if receiver.active and msg and msg.payload then
+          onFrame(receiver.guildId, msg.payload, msg)
+          self.manager:emit("voiceReceiveFrame", self, receiver.guildId, msg.payload, msg)
+        end
+      end
+    end)
+    receiver.active = false
+    if self._voiceReceivers[receiver.guildId] == receiver then
+      self._voiceReceivers[receiver.guildId] = nil
+    end
+    if not readOk then
+      self.manager:emit("voiceReceiveError", self, receiver.guildId, tostring(readErr))
+    end
+    self.manager:emit("voiceReceiveDisconnect", self, receiver.guildId)
+  end)()
+
+  return receiver
+end
+
+function Node:stopVoiceReceive(guildId)
+  local key = tostring(guildId)
+  local receiver = self._voiceReceivers[key]
+  if not receiver then return false end
+  receiver.active = false
+  self._voiceReceivers[key] = nil
+  if receiver.write then pcall(receiver.write, false) end
+  return true
 end
 
 return Node

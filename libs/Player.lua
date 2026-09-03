@@ -106,6 +106,13 @@ function Player:play(options)
   if options.startTime then payload.position = options.startTime end
   if options.endTime   then payload.endTime   = options.endTime  end
   if options.volume    then self.volume = options.volume         end
+  if options.audioTrackId then payload.track.audioTrackId = options.audioTrackId end
+  if options.userData then payload.track.userData = options.userData end
+  if options.nextTrack then
+    payload.nextTrack = type(options.nextTrack) == "string"
+      and { encoded = options.nextTrack }
+      or options.nextTrack
+  end
 
   if next(self.filters.data) ~= nil then
     payload.filters = self.filters.data
@@ -304,6 +311,81 @@ end
 
 function Player:_handleWebSocketClosed(code, reason, byRemote)
   self.manager:emit("socketClosed", self, code, reason, byRemote)
+end
+
+local function encodedTrack(player)
+  local track = player.queue.current
+  if not track or not track.encoded then
+    error("[Player:" .. player.guildId .. "] no encoded current track")
+  end
+  return track.encoded
+end
+
+-- NodeLink convenience API.  These methods only issue standard HTTP requests;
+-- callers may guard them with player.node.isNodeLink when using mixed nodes.
+function Player:getLyrics(lang)
+  return self.node.rest:getLyrics(encodedTrack(self), lang)
+end
+
+function Player:getChapters()
+  return self.node.rest:getChapters(encodedTrack(self))
+end
+
+function Player:getMeaning(lang)
+  return self.node.rest:getMeaning(encodedTrack(self), lang)
+end
+
+function Player:subscribeLyrics(skipTrackSource)
+  return self.node.rest:subscribeLyrics(self.guildId, skipTrackSource)
+end
+
+function Player:unsubscribeLyrics()
+  return self.node.rest:unsubscribeLyrics(self.guildId)
+end
+
+function Player:getSponsorBlock()
+  return self.node.rest:getSponsorBlock(self.guildId)
+end
+
+function Player:updateSponsorBlock(data)
+  return self.node.rest:updateSponsorBlock(self.guildId, data)
+end
+
+function Player:setSponsorBlockSegments(segments)
+  return self.node.rest:setSponsorBlockSegments(self.guildId, segments)
+end
+
+function Player:clearSponsorBlock()
+  return self.node.rest:clearSponsorBlock(self.guildId)
+end
+
+function Player:addMix(track, volume, userData)
+  local encoded = type(track) == "table" and track.encoded or track
+  assert(encoded, "[Player] addMix requires an encoded track or track object")
+  return self.node.rest:addMix(self.guildId, {
+    track = { encoded = encoded, userData = userData },
+    volume = volume,
+  })
+end
+
+function Player:getMixes()
+  return self.node.rest:getMixes(self.guildId)
+end
+
+function Player:updateMix(mixId, volume)
+  return self.node.rest:updateMix(self.guildId, mixId, { volume = volume })
+end
+
+function Player:removeMix(mixId)
+  return self.node.rest:removeMix(self.guildId, mixId)
+end
+
+function Player:startVoiceReceive(onFrame)
+  return self.node:startVoiceReceive(self.guildId, onFrame)
+end
+
+function Player:stopVoiceReceive()
+  return self.node:stopVoiceReceive(self.guildId)
 end
 
 return Player

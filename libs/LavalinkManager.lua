@@ -202,6 +202,50 @@ function LavalinkManager:decodeTracks(encodedList, nodeId)
   return node.rest:decodeTracks(encodedList)
 end
 
+-- NodeLink API helpers that are useful before a player exists.
+function LavalinkManager:refreshNodeInfo(nodeId)
+  local node = nodeId and self:getNode(nodeId) or self:_leastLoadedNode()
+  return node:refreshInfo()
+end
+
+function LavalinkManager:getNodeLinkConnection(nodeId)
+  local node = nodeId and self:getNode(nodeId) or self:_leastLoadedNode()
+  return node.rest:getConnection()
+end
+
+function LavalinkManager:getNodeLinkWorkers(nodeId)
+  local node = nodeId and self:getNode(nodeId) or self:_leastLoadedNode()
+  return node.rest:getWorkers()
+end
+
+function LavalinkManager:patchNodeLinkWorker(data, nodeId)
+  local node = nodeId and self:getNode(nodeId) or self:_leastLoadedNode()
+  return node.rest:patchWorker(data)
+end
+
+function LavalinkManager:getLyrics(encodedTrack, options)
+  options = options or {}
+  local node = options.node and self:getNode(options.node) or self:_leastLoadedNode()
+  return node.rest:getLyrics(encodedTrack, options.lang)
+end
+
+function LavalinkManager:getChapters(encodedTrack, nodeId)
+  local node = nodeId and self:getNode(nodeId) or self:_leastLoadedNode()
+  return node.rest:getChapters(encodedTrack)
+end
+
+function LavalinkManager:getMeaning(encodedTrack, options)
+  options = options or {}
+  local node = options.node and self:getNode(options.node) or self:_leastLoadedNode()
+  return node.rest:getMeaning(encodedTrack, options.lang)
+end
+
+function LavalinkManager:getTrackStream(encodedTrack, options)
+  options = options or {}
+  local node = options.node and self:getNode(options.node) or self:_leastLoadedNode()
+  return node.rest:getTrackStream(encodedTrack, options.itag)
+end
+
 function LavalinkManager:getUsableNodes()
   local list = {}
   for _, node in pairs(self.nodes) do
