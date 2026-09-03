@@ -17,6 +17,16 @@ function RestHandler:_baseUrl()
   return string.format("%s://%s:%d", scheme, n.options.host, n.options.port)
 end
 
+function RestHandler:_apiPrefix()
+  return "/v" .. tostring(self.node.options.apiVersion or 4)
+end
+
+function RestHandler:_requireV4(feature)
+  if (self.node.options.apiVersion or 4) ~= 4 then
+    error("[RestHandler] " .. feature .. " requires Lavalink API v4")
+  end
+end
+
 function RestHandler:_headers()
   return {
     { "Authorization", self.node.options.authorization },
@@ -26,7 +36,7 @@ function RestHandler:_headers()
 end
 
 function RestHandler:request(method, path, body, query)
-  local url = self:_baseUrl() .. "/v4" .. path .. utils.buildQuery(query)
+  local url = self:_baseUrl() .. self:_apiPrefix() .. path .. utils.buildQuery(query)
   local headers = self:_headers()
   local bodyStr = body and json.encode(body) or nil
 
@@ -57,7 +67,7 @@ end
 -- Same transport as request(), but preserves a non-JSON response.  NodeLink
 -- uses this for its optional PCM streaming endpoint.
 function RestHandler:requestRaw(method, path, body, query)
-  local url = self:_baseUrl() .. "/v4" .. path .. utils.buildQuery(query)
+  local url = self:_baseUrl() .. self:_apiPrefix() .. path .. utils.buildQuery(query)
   local headers = self:_headers()
   local bodyStr = body and json.encode(body) or nil
 
@@ -81,16 +91,56 @@ function RestHandler:_sessionPath(guildId, suffix)
   return path .. (suffix or "")
 end
 
+local function normalizeV3Track(track)
+  if type(track) ~= "table" then return track end
+  if not track.encoded and track.track then track.encoded = track.track end
+  return track
+end
+
+-- https://www.youtube.com/watch?v=4wxQPkzJSv8
+local function normalizeV3LoadResult(result)
+  if not result or not result.loadType then return result end
+  if result.data ~= nil or result.loadType == "empty" or result.loadType == "error" then
+    return result
+  end
+
+  local tracks = result.tracks or {}
+  for _, track in ipairs(tracks) do normalizeV3Track(track) end
+  if result.loadType == "TRACK_LOADED" then
+    return { loadType = "track", data = tracks[1] }
+  elseif result.loadType == "PLAYLIST_LOADED" then
+    return { loadType = "playlist", data = {
+      info = result.playlistInfo or {}, tracks = tracks,
+    } }
+  elseif result.loadType == "SEARCH_RESULT" then
+    return { loadType = "search", data = tracks }
+  elseif result.loadType == "NO_MATCHES" then
+    return { loadType = "empty", data = nil }
+  elseif result.loadType == "LOAD_FAILED" then
+    return { loadType = "error", data = result.exception or result }
+  end
+  return result
+end
+
 function RestHandler:loadTracks(identifier)
-  return self:request("GET", "/loadtracks", nil, { identifier = identifier })
+  local result = self:request("GET", "/loadtracks", nil, { identifier = identifier })
+  if (self.node.options.apiVersion or 4) == 3 then
+    return normalizeV3LoadResult(result)
+  end
+  return result
 end
 
 function RestHandler:decodeTrack(encoded)
-  return self:request("GET", "/decodetrack", nil, { encodedTrack = encoded })
+  return normalizeV3Track(self:request("GET", "/decodetrack", nil,
+    { encodedTrack = encoded }))
 end
 
 function RestHandler:decodeTracks(encodedList)
-  return self:request("POST", "/decodetracks", encodedList)
+  local tracks = self:request("POST", "/decodetracks", encodedList)
+  if (self.node.options.apiVersion or 4) == 3 then
+    for _, track in ipairs(tracks or {}) do normalizeV3Track(track) end
+  end
+  return tracks
 end
 
 function RestHandler:getPlayers()
@@ -162,37 +212,45 @@ end
 -- NodeLink extensions.  They deliberately live alongside the Lavalink v4
 -- API: applications can opt into them only after checking node.isNodeLink.
 function RestHandler:getConnection()
+  self:_requireV4("getConnection")
   return self:request("GET", "/connection")
 end
 
 function RestHandler:getWorkers()
+  self:_requireV4("getWorkers")
   return self:request("GET", "/workers")
 end
 
 function RestHandler:patchWorker(data)
+  self:_requireV4("patchWorker")
   return self:request("PATCH", "/workers", data)
 end
 
 function RestHandler:getLyrics(encodedTrack, lang)
+  self:_requireV4("getLyrics")
   return self:request("GET", "/loadlyrics", nil,
     { encodedTrack = encodedTrack, lang = lang })
 end
 
 function RestHandler:getChapters(encodedTrack)
+  self:_requireV4("getChapters")
   return self:request("GET", "/loadchapters", nil, { encodedTrack = encodedTrack })
 end
 
 function RestHandler:getMeaning(encodedTrack, lang)
+  self:_requireV4("getMeaning")
   return self:request("GET", "/meaning", nil,
     { encodedTrack = encodedTrack, lang = lang })
 end
 
 function RestHandler:getTrackStream(encodedTrack, itag)
+  self:_requireV4("getTrackStream")
   return self:request("GET", "/trackstream", nil,
     { encodedTrack = encodedTrack, itag = itag })
 end
 
 function RestHandler:getLoadStream(options)
+  self:_requireV4("getLoadStream")
   assert(options and options.encodedTrack,
     "[RestHandler] getLoadStream options.encodedTrack required")
   local query = {}
@@ -202,50 +260,61 @@ function RestHandler:getLoadStream(options)
 end
 
 function RestHandler:postLoadStream(options)
+  self:_requireV4("postLoadStream")
   assert(options and options.encodedTrack,
     "[RestHandler] postLoadStream options.encodedTrack required")
   return self:requestRaw("POST", "/loadstream", options)
 end
 
 function RestHandler:getSponsorBlock(guildId)
+  self:_requireV4("getSponsorBlock")
   return self:request("GET", self:_sessionPath(guildId, "/sponsorblock"))
 end
 
 function RestHandler:updateSponsorBlock(guildId, data)
+  self:_requireV4("updateSponsorBlock")
   return self:request("PATCH", self:_sessionPath(guildId, "/sponsorblock"), data)
 end
 
 function RestHandler:setSponsorBlockSegments(guildId, segments)
+  self:_requireV4("setSponsorBlockSegments")
   return self:request("POST", self:_sessionPath(guildId, "/sponsorblock"),
     { segments = segments })
 end
 
 function RestHandler:clearSponsorBlock(guildId)
+  self:_requireV4("clearSponsorBlock")
   return self:request("DELETE", self:_sessionPath(guildId, "/sponsorblock"))
 end
 
 function RestHandler:subscribeLyrics(guildId, skipTrackSource)
+  self:_requireV4("subscribeLyrics")
   local query = skipTrackSource and { skipTrackSource = "true" } or nil
   return self:request("POST", self:_sessionPath(guildId, "/lyrics/subscribe"), nil, query)
 end
 
 function RestHandler:unsubscribeLyrics(guildId)
+  self:_requireV4("unsubscribeLyrics")
   return self:request("DELETE", self:_sessionPath(guildId, "/lyrics/subscribe"))
 end
 
 function RestHandler:addMix(guildId, data)
+  self:_requireV4("addMix")
   return self:request("POST", self:_sessionPath(guildId, "/mix"), data)
 end
 
 function RestHandler:getMixes(guildId)
+  self:_requireV4("getMixes")
   return self:request("GET", self:_sessionPath(guildId, "/mix"))
 end
 
 function RestHandler:updateMix(guildId, mixId, data)
+  self:_requireV4("updateMix")
   return self:request("PATCH", self:_sessionPath(guildId, "/mix/" .. tostring(mixId)), data)
 end
 
 function RestHandler:removeMix(guildId, mixId)
+  self:_requireV4("removeMix")
   return self:request("DELETE", self:_sessionPath(guildId, "/mix/" .. tostring(mixId)))
 end
 

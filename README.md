@@ -23,7 +23,7 @@ Using the discord.lua integration instead does not require Discordia; install di
 ## Requirements
 
 - [Luvit](https://luvit.io/) runtime + [Lit](https://luvit.io/lit.html) package manager
-- Lavalink v4 server
+- Lavalink v4 server (or Lavalink v3.7+ with `LAVALINK_API_VERSION=3`)
 
 ---
 
@@ -305,6 +305,25 @@ local result = lavalink:search("never gonna give you up", { source = "spsearch" 
   reconnectDelay = 5000,                -- ms, doubles on each attempt up to 60s
   regions        = { "eu-west" },       -- used by region-aware node selection
 }
+```
+
+## Lavalink API version
+
+The client uses Lavalink v4 by default. To use a Lavalink v3.7+ node, set the
+environment variable before starting the bot:
+
+```bash
+LAVALINK_API_VERSION=3 luvit bot.lua
+```
+
+Or choose a version in code; a node-level `apiVersion` overrides the manager
+default:
+
+```lua
+local lavalink = lavalinklua.discordia(client, {
+  apiVersion = 3, -- accepts only 3 or 4; default is 4
+  -- nodes = { { apiVersion = 4, ... } }, -- optional per-node override
+})
 ```
 
 If you're not using the Discordia or discord.lua integration, call `lavalink:handleVoiceUpdate(packet)` yourself for every `VOICE_STATE_UPDATE` and `VOICE_SERVER_UPDATE` gateway event, and provide `sendPayload = function(guildId, payload) ... end` in the manager options to forward voice payloads (OP4) to your gateway.

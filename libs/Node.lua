@@ -22,6 +22,9 @@ function Node.new(manager, options)
   end
   local host = options.host or urlHost or "localhost"
   local port = options.port or urlPort or 2333
+  local apiVersion = tonumber(options.apiVersion or manager.options.apiVersion or 4)
+  assert(apiVersion == 3 or apiVersion == 4,
+    "[Node] apiVersion must be 3 or 4")
   local self = setmetatable(Emitter.new(), Node)
 
   self.manager = manager
@@ -37,6 +40,7 @@ function Node.new(manager, options)
     reconnectTries = options.reconnectTries or 5,
     reconnectDelay = options.reconnectDelay or 5000,
     regions        = options.regions or {},
+    apiVersion     = apiVersion,
   }
 
   self.sessionId          = options.sessionId or nil
@@ -68,7 +72,7 @@ function Node:connect()
       host     = self.options.host,
       port     = self.options.port,
       tls      = self.options.secure,
-      pathname = "/v4/websocket",
+      pathname = "/v" .. self.options.apiVersion .. "/websocket",
       headers  = {
         { "Authorization", self.options.authorization },
         { "Num-Shards",    tostring(self.manager.options.shards or 1) },
@@ -181,6 +185,13 @@ function Node:_handleMessage(raw)
 end
 
 function Node:_handleEvent(data)
+  -- Lavalink 3.7+ sends encodedTrack instead of the v4 Track object in
+  -- websocket events.  Keep the public event shape stable for callers.
+  if not data.track and data.encodedTrack then
+    data.track = { encoded = data.encodedTrack }
+  elseif type(data.track) == "string" then
+    data.track = { encoded = data.track }
+  end
   local t = data.type
   if t == "WorkerFailedEvent" then
     self.manager:emit("nodeLinkWorkerFailed", self, data.affectedGuilds or {}, data.message, data)
@@ -191,6 +202,13 @@ function Node:_handleEvent(data)
   if not player then
     self.manager:emit("nodeLinkEvent", self, nil, data)
     return
+  end
+
+  -- v3 events contain only the encoded track.  Retain metadata resolved by
+  -- loadtracks when it is the same currently queued track.
+  if data.track and not data.track.info and player.queue and player.queue.current
+    and player.queue.current.encoded == data.track.encoded then
+    data.track = player.queue.current
   end
 
   if t == "TrackStartEvent" then
@@ -301,7 +319,8 @@ end
 function Node:refreshInfo()
   local info = self.rest:getInfo()
   self.info = info
-  self.isNodeLink = info and info.isNodelink == true or false
+  self.isNodeLink = self.options.apiVersion == 4
+    and info and info.isNodelink == true or false
   self.manager:emit("nodeInfo", self, info)
   if self.isNodeLink then self.manager:emit("nodeLinkReady", self, info) end
   return info
@@ -319,6 +338,8 @@ end
 -- through unchanged: depending on the NodeLink configuration they are Opus or
 -- PCM S16LE binary payloads.
 function Node:startVoiceReceive(guildId, onFrame)
+  assert(self.options.apiVersion == 4,
+    "[Node] voice receive is a NodeLink v4 API feature")
   assert(guildId, "[Node] guildId required for voice receive")
   assert(type(onFrame) == "function", "[Node] onFrame callback required")
   self:stopVoiceReceive(guildId)

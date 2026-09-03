@@ -19,12 +19,18 @@ function LavalinkManager.new(options)
   assert(options.sendPayload,                  "[LavalinkManager] sendPayload(guildId, payload) required")
   assert(options.clientId,                     "[LavalinkManager] clientId required")
 
+  local apiVersion = tonumber(options.apiVersion
+    or os.getenv("LAVALINK_API_VERSION") or 4)
+  assert(apiVersion == 3 or apiVersion == 4,
+    "[LavalinkManager] apiVersion must be 3 or 4")
+
   local self = setmetatable(Emitter.new(), LavalinkManager)
 
   self.options = {
     clientId    = tostring(options.clientId),
     clientName  = options.clientName  or "lavalink-lua/1.0",
     shards      = options.shards      or 1,
+    apiVersion  = apiVersion,
     sendPayload = options.sendPayload,
     autoSkip    = options.autoSkip ~= false,
     playerOptions = options.playerOptions or { defaultVolume = 100 },
