@@ -16,7 +16,7 @@ For the example bot, also install Discordia:
 lit install SinisterRectus/discordia
 ```
 
-Using the discord.lua integration instead does not require Discordia; install discord.lua per its own README.
+lavalink.lua currently supports ONLY my custom Discord API wrapper [filispeen/discord.lua](https://github.com/filispeen/discord.lua) and [SinisterRectus/discordia](https://github.com/SinisterRectus/discordia) (first supported library). 
 
 ---
 
