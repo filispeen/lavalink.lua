@@ -109,7 +109,7 @@ function Node:connect()
 
     local readOk, readErr = pcall(function()
       for msg in read do
-        if msg and msg.payload then
+        if msg and msg.payload and msg.opcode < 8 then
           self:_handleMessage(msg.payload)
         end
       end

@@ -2,11 +2,18 @@
 -- Run: luvit tests/node_transport_test.lua
 
 local events, requests, timers = {}, {}, {}
+local websocket_messages = {
+  { opcode = 9, payload = "1" }, -- NodeLink ping; must not be JSON-decoded.
+  { opcode = 1, payload = '{"op":"ready","resumed":false,"sessionId":"session"}' },
+}
 
 package.loaded["json"] = {
   encode = function() return "{}" end,
   decode = function(raw)
     if raw == "{\"loadType\":\"empty\",\"data\":{}}" then return { loadType = "empty", data = {} } end
+    if raw == '{"op":"ready","resumed":false,"sessionId":"session"}' then
+      return { op = "ready", resumed = false, sessionId = "session" }
+    end
     error("unexpected JSON fixture: " .. tostring(raw))
   end,
   null = {},
@@ -23,7 +30,14 @@ package.loaded["./Emitter"] = assert(loadfile("libs/Emitter.lua"))()
 package.loaded["./RestHandler"] = assert(loadfile("libs/RestHandler.lua"))()
 
 package.loaded["coro-websocket"] = {
-  connect = function() error("offline") end,
+  connect = function()
+    local index = 0
+    local function read()
+      index = index + 1
+      return websocket_messages[index]
+    end
+    return {}, read, function() end
+  end,
 }
 package.loaded["uv"] = {
   new_timer = function()
@@ -56,6 +70,7 @@ local node = Node.new(manager, {
   password = "secret",
   reconnectTries = 1,
   reconnectDelay = 25,
+  resuming = false,
 })
 assert(node.options.host == "music.example")
 assert(node.options.port == 8443)
@@ -66,8 +81,14 @@ assert(node.rest:loadTracks("https://example.org/audio.mp3").loadType == "empty"
 assert(requests[1].url:find("/v4/loadtracks", 1, true))
 
 node:connect()
-assert(events[1][1] == "nodeError")
-assert(events[2][1] == "nodeReconnecting")
+assert(node.sessionId == "session")
+local seen_events = {}
+for _, event in ipairs(events) do seen_events[event[1]] = true end
+assert(seen_events.nodeConnect)
+assert(seen_events.nodeReady)
+assert(seen_events.nodeDisconnect)
+assert(seen_events.nodeReconnecting)
+assert(not seen_events.nodeError)
 assert(timers[1].delay == 25)
 
 node:disconnect("test complete")
