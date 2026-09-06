@@ -1,18 +1,12 @@
+local NULL = require("json").null
+
 local FilterManager = {}
 FilterManager.__index = FilterManager
 
-local DEFAULT_FILTERS = {
-  volume = nil,
-  equalizer = nil,
-  karaoke = nil,
-  timescale = nil,
-  tremolo = nil,
-  vibrato = nil,
-  rotation = nil,
-  distortion = nil,
-  channelMix = nil,
-  lowPass = nil,
-  pluginFilters = nil,
+local FILTERS = {
+  "volume", "equalizer", "karaoke", "timescale", "tremolo", "vibrato",
+  "rotation", "distortion", "channelMix", "lowPass", "pluginFilters",
+  "echo", "chorus", "compressor", "highpass", "phaser", "spatial",
 }
 
 function FilterManager.new(player)
@@ -22,12 +16,12 @@ function FilterManager.new(player)
   return self
 end
 
-function FilterManager:_apply()
+function FilterManager:_apply(filters)
   local node = self.player.node
   if not node or not node.sessionId then return end
   local restHandler = node.rest
   local ok, err = pcall(function()
-    restHandler:updatePlayer(self.player.guildId, { filters = self.data })
+    restHandler:updatePlayer(self.player.guildId, { filters = filters or self.data })
   end)
   if not ok then
     self.player.manager:emit("error", self.player, err)
@@ -140,13 +134,17 @@ end
 
 function FilterManager:resetFilters()
   self.data = {}
-  self:_apply()
+  local filters = {}
+  for _, name in ipairs(FILTERS) do filters[name] = NULL end
+  self:_apply(filters)
   return self
 end
 
 function FilterManager:resetFilter(filterName)
   self.data[filterName] = nil
-  self:_apply()
+  local filters = self:getCurrentData()
+  filters[filterName] = NULL
+  self:_apply(filters)
   return self
 end
 

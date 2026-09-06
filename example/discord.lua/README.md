@@ -15,7 +15,7 @@ LAVALINK_PASSWORD=youshallnotpass
 ```
 
 Then run `luvit bot.lua`. Enable the `GUILD_VOICE_STATES` gateway intent for
-the bot. The example registers `/join`, `/play source`, `/pause`, `/resume`,
+the bot. The example registers `/join`, `/play source`, `/search query`, `/filter name`, `/pause`, `/resume`,
 `/stop`, `/leave`, and `/volume value`; it is intentionally slash-command only.
 HTTP(S) URLs such as MP3 are passed directly to Lavalink. Whether a format can
 play depends on the Lavalink node and its FFmpeg installation.

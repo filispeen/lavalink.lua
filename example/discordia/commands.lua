@@ -185,6 +185,29 @@ register("play", function(message, args, lavalink)
   end
 end)
 
+register("search", function(message, args, lavalink)
+  if #args == 0 then
+    reply(message, "Usage: `!search <query>`")
+    return
+  end
+
+  local result = lavalink:search(table.concat(args, " "))
+  local tracks = result and (result.loadType == "search" and result.data
+    or result.loadType == "track" and { result.data }) or {}
+  if #tracks == 0 then
+    reply(message, "No results found.")
+    return
+  end
+
+  local lines = { "**Search results:**" }
+  for i = 1, math.min(#tracks, 5) do
+    local info = tracks[i].info or {}
+    table.insert(lines, string.format("%d. **%s** — %s [%s]",
+      i, info.title or "Unknown", info.author or "Unknown", formatDuration(info.length)))
+  end
+  reply(message, table.concat(lines, "\n"))
+end)
+
 register("skip", function(message, args, lavalink)
   local player = lavalink:getPlayer(message.guild.id)
   if not player or not player.playing then
@@ -379,7 +402,7 @@ register("filter", function(message, args, lavalink)
   elseif name == "bassboost" then
     local bands = {}
     for i = 0, 4 do
-      table.insert(bands, { band = i, gain = 0.35 })
+      table.insert(bands, { band = i, gain = 0.75 })
     end
     player.filters:setEqualizer(bands)
     reply(message, "Bass boost filter enabled.")

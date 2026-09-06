@@ -189,7 +189,7 @@ function LavalinkManager:search(query, options)
 
   local source     = options.source or "ytsearch"
   local identifier = query:match("^https?://") and query
-    or (source .. ":" .. utils.encodeURIComponent(query))
+    or (source .. ":" .. query)
 
   local ok, result = pcall(node.rest.loadTracks, node.rest, identifier)
   if not ok then

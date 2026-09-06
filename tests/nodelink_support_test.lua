@@ -94,4 +94,21 @@ player.filters:setSpatial({ width = 0.5 })
 assert(player.filters.data.echo.delay == 500)
 assert(player.filters.data.spatial.width == 0.5)
 
+player.filters:resetFilters()
+assert(playerRequest.filters.echo == package.loaded["json"].null)
+assert(playerRequest.filters.timescale == package.loaded["json"].null)
+player.filters:setTimescale({ speed = 1.2 })
+player.filters:resetFilter("timescale")
+assert(playerRequest.filters.timescale == package.loaded["json"].null)
+
+package.loaded["./Node"] = {}
+package.loaded["./Player"] = {}
+local LavalinkManager = assert(loadfile("libs/LavalinkManager.lua"))()
+local identifier
+local searchManager = setmetatable({
+  nodes = { main = { rest = { loadTracks = function(_, value) identifier = value end } } },
+}, { __index = LavalinkManager })
+searchManager:search("lofi hip-hop", { node = "main" })
+assert(identifier == "ytsearch:lofi hip-hop")
+
 print("NodeLink extension transport test: OK")
